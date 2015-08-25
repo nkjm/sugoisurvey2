@@ -1,0 +1,390 @@
+<apex:page controller="sessionCtl" applyHtmlTag="false" applyBodyTag="false" showHeader="false" sidebar="false" standardStylesheets="false" docType="html-5.0" cache="true">
+
+<apex:variable var="ns" value="sugoisurvey5" />
+
+<html ng-app="sugoisurvey">
+
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"></meta>
+<link rel="stylesheet" type="text/css" href="{!URLFOR($Resource.bootstrap_3_1_1_dist_zip, 'bootstrap-3.1.1-dist/css/bootstrap.min.css')}" />
+<!--[if lt IE 9]>
+<script src="//cdnjs.cloudflare.com/ajax/libs/html5shiv/3.6.2/html5shiv.js"></script>
+<![endif]-->
+<!--[if lte IE 8]>
+<script src="//cdnjs.cloudflare.com/ajax/libs/json3/3.2.4/json3.min.js"></script>
+<![endif]-->
+<title>{!$label.sugoisurvey}</title>
+
+<style>
+.list-group-item:hover {
+    cursor: pointer;
+}
+@media screen and (min-width: 320px) {
+    h1 {
+        font-size: 12pt;
+    }
+    .brand_logo {
+        height: 60px;
+    }
+}
+@media screen and (min-width: 768px) {
+    h1 {
+        font-size: 20pt;
+    }
+    .brand_logo {
+        height: 100px;
+    }
+}
+</style>
+
+<script type="text/javascript" src="{!$Resource.jquery_1_11_0_min_js}"></script>
+<script type="text/javascript" src="{!URLFOR($Resource.bootstrap_3_1_1_dist_zip, 'bootstrap-3.1.1-dist/js/bootstrap.min.js')}"></script>
+<script type="text/javascript" src="{!$Resource.angular_min_js}"></script>
+<script type="text/javascript" src="{!$Resource.angular_sanitize_min_js}"></script>
+<script type="text/javascript" src="{!$Resource.angular_touch_min_js}"></script>
+<script type="text/javascript" src="{!$Resource.ui_bootstrap_tpls_0_10_0_min_js}"></script>
+<script type="text/javascript" src="{!$Resource.modalRemoting_js}"></script>
+<script type="text/javascript" src="{!$Resource.forceInput_js}"></script>
+<script type="text/javascript" src="{!$Resource.sugoiQuestion_js}"></script>
+<script>
+angular.module('sugoisurvey', ['ui.bootstrap', 'ngTouch', 'sugoiQuestion', 'modalRemoting'])
+.controller('survey_ctl', function($scope, $filter, $q, $modal, remoting){
+
+    $scope.open_lookup = function(){
+        var modalInstance = $modal.open({
+            templateUrl: 'T_lookup',
+            controller: 'lookupCtl',
+            scope: $scope
+        });
+    }
+
+    $scope.d_get_config = function(){
+        var d = $q.defer();
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.sessionCtl.get_config}',
+            function(result, event){
+                if (event.status){
+                    d.resolve(result);
+                } else {
+                    d.reject(event);
+                }
+            }
+        );
+        return d.promise;
+    }
+
+    $scope.d_get_sessions = function(){
+        var d = $q.defer();
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.sessionCtl.get_open_sessions_for_sites}',
+            function(result, event){
+                if (event.status){
+                    d.resolve(result);
+                } else {
+                    d.reject(event);
+                }
+            },{escape:false}
+        );
+        return d.promise;
+    }
+
+    // FOR BACKWARD COMPATIBILITY. Should be removed by Oct 2014.
+    $scope.deprecated_d_get_session = function(session_id){
+        var d = $q.defer();
+
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.sessionCtl.deprecated_get_session_for_sites}',
+            session_id,
+            'survey_opening',
+            function(result, event){
+                if (event.status){
+                    d.resolve(result);
+                } else {
+                    d.reject(event);
+                }
+            },{escape:false}
+
+        );
+        return d.promise;
+    }
+
+    $scope.d_get_session = function(ssession_id){
+        var d = $q.defer();
+
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.sessionCtl.get_session_for_sites}',
+            ssession_id,
+            'survey_opening',
+            function(result, event){
+                if (event.status){
+                    d.resolve(result);
+                } else {
+                    d.reject(event);
+                }
+            },{escape:false}
+
+        );
+        return d.promise;
+    }
+
+    $scope.d_get_fields = function(object_name){
+        var d = $q.defer();
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.sessionCtl.get_objFields}',
+            object_name,
+            function(result, event){
+                if (event.status){
+                    d.resolve(result);
+                } else {
+                    d.reject(event);
+                }
+            },
+            {escape: true}
+        );
+        return d.promise;
+    }
+
+    $scope.d_submit_survey = function(session_id, csas, sguest_id){
+        var d = $q.defer();
+
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.sessionCtl.submit_survey}',
+            session_id,
+            csas,
+            sguest_id,
+            false,
+            function(result, event){
+                if (event.status){
+                    d.resolve(result);
+                } else {
+                    d.reject(event);
+                }
+            },
+            {escape: true}
+        );
+        return d.promise;
+    }
+
+    $scope.generate_csqs = function(csqs){
+        angular.forEach(csqs, function(csqv, csqk){
+            csqv.{!ns}__Custom_Survey_Option__r = [];
+            angular.forEach($scope.session.record.{!ns}__Custom_Survey_Option__r, function(csov, csok){
+                if (csov.{!ns}__Custom_Survey_Question__c == csqv.Id){
+                    csqv.{!ns}__Custom_Survey_Option__r.push(csov);
+                }
+            });
+        });
+        return csqs;
+    };
+    
+    $scope.submit_survey = function(session_id, csas){
+        var csas_for_submit = [];
+        angular.forEach(csas, function(csa, key){
+            csa_for_submit = {};
+            csa_for_submit.{!ns}__Custom_Survey_Option__c = key;
+
+            // Add csa to csas_for_submit
+            if (csa.type == 'checkbox' || csa.type == 'radio'){
+                if (typeof csa.value != 'undefined'){
+                    csa_for_submit.{!ns}__Free_Form__c = csa.value;
+                }
+                if (csa.selected == true){
+                    csas_for_submit.push(csa_for_submit);
+                }
+            } else if (csa.type == 'free'){
+                if (typeof csa.value != 'undefined' && csa.value != ''){
+                    csa_for_submit.{!ns}__Free_Form__c = csa.value;
+                    csas_for_submit.push(csa_for_submit);
+                }
+            } else if (csa.type == 'rating'){
+                if (csa.selected == true){
+                    csas_for_submit.push(csa_for_submit);
+                }
+            } else if (csa.type == 'number') {
+                if (typeof csa.value != 'undefined' && csa.value != null){
+                    csa_for_submit.{!ns}__Free_Form_Of_Number__c = csa.value;
+                    csas_for_submit.push(csa_for_submit);
+                }
+            } else if (csa.type == 'guest'){
+                if (typeof csa.value != 'undefined' && csa.value != ''){
+                    csa_for_submit.{!ns}__Free_Form__c = csa.value;
+                    csas_for_submit.push(csa_for_submit);
+                }
+            }
+        });
+
+        var sguest_id = $scope.guest.record.{!ns}__Secure_Id__c || null;
+
+        remoting.init();
+        $scope.d_submit_survey(session_id, csas_for_submit, sguest_id)
+        .then(
+            function(){
+                remoting.progress = 100;
+                remoting.success('{!$label.survey_has_been_submitted}');
+                angular.forEach($scope.csas, function(csa, key){
+                    csa.selected = false;
+                    csa.value = null;
+                });
+            },
+            function(event){
+                remoting.error(event);
+            }
+        );
+    };
+
+
+    ////
+    //// Main
+    ////
+
+    $scope.remoting = remoting;
+    $scope.csas = {};
+    $scope.session = {
+        record : {
+            Id: null
+        },
+        records : []
+    }
+
+    // Get Custom Setting
+    remoting.init(false);
+    $scope.d_get_config()
+    .then(
+        function(config){
+            $scope.config = config;
+            // ('{!JSENCODE($CurrentPage.parameters.id)}' == '') IS FOR BACKWARD COMPATIBILITY. Should be removed by Oct 2014.
+            if ('{!JSENCODE($CurrentPage.parameters.ssession_id)}' == '' && '{!JSENCODE($CurrentPage.parameters.id)}' == ''){
+                if ($scope.config.{!ns}__show_survey_list__c == true){
+                    $scope.open_lookup();
+                }
+            } else {
+                return $scope.d_get_fields('{!ns}__Guest__c');
+            }
+        },
+        function(event){
+            return $q.reject(event);
+        }
+    )
+    .then(
+        function(fields){
+            if (fields != null){
+                $scope.guest = {};
+                $scope.guest.record = {};
+                $scope.guest.fields = fields;
+                if ('{!JSENCODE($CurrentPage.parameters.sguest_id)}' != ''){
+                    $scope.guest.record.{!ns}__Secure_Id__c = '{!JSENCODE($CurrentPage.parameters.sguest_id)}';
+                }
+
+                // FOR BACKWARD COMPATIBILITY. Should be uncommented by Oct 2014.
+                // return $scope.d_get_session('{!JSENCODE($CurrentPage.parameters.ssession_id)}');
+
+                // FOR BACKWARD COMPATIBILITY. Should be removed by Oct 2014.
+                if ('{!JSENCODE($CurrentPage.parameters.ssession_id)}' != ''){
+                    return $scope.d_get_session('{!JSENCODE($CurrentPage.parameters.ssession_id)}');
+                } else if ('{!JSENCODE($CurrentPage.parameters.id)}' != ''){
+                    return $scope.deprecated_d_get_session('{!JSENCODE($CurrentPage.parameters.id)}');
+                }
+            }
+        },
+        function(event){
+            return $q.reject(event);
+        }
+    )
+    .then(
+        function(record){
+            if (record != null){
+                $scope.session.record = record;
+                $scope.csqs = $scope.generate_csqs($scope.session.record.{!ns}__Custom_Survey_Question__r);
+            }
+        },
+        function(event){
+            remoting.error(event);
+        }
+    );
+})
+.controller('lookupCtl', function($scope, $modalInstance, $q, remoting){
+    $scope.cancel = function(){
+        $modalInstance.dismiss();
+    }
+
+    $scope.select_record = function(record){
+        window.location = '?ssession_id=' + record.{!ns}__Secure_Id__c;
+    }
+
+    $scope.d_get_sessions()
+    .then(
+        function(records){
+            $scope.session.records = records
+        },
+        function(event){
+            remoting.error(event);
+        }
+    );
+});
+
+</script>
+</head>
+
+
+<body>
+
+<div ng-controller="survey_ctl" class="container" style="margin-top: 20px; margin-bottom: 40px;" id="container" ng-cloak="true">
+
+    <!-- Alerts -->
+    <div class="alert alert-danger" ng-show="remoting.alerts.length > 0 && session.record.Id == null">
+        <ul>
+            <li ng-repeat="alert in remoting.alerts">{{alert}}</li>
+        </ul>
+    </div>
+
+    <div ng-if="session.record.Id != null">
+        <!-- Button to show Survey List -->
+        <div ng-show="config.{!ns}__show_survey_list__c" style="text-align:right;">
+            <button type="button" class="btn btn-default" ng-click="open_lookup()">
+                <span class="glyphicon glyphicon-search"></span>&nbsp;
+                {!$label.other_survey}
+            </button>
+        </div>
+
+        <!-- Brand Logo -->
+        <div>
+            <img ng-show="session.record.{!ns}__Brand_Logo_Id__c != null" class="brand_logo" src="/sugoisurvey/servlet/servlet.FileDownload?file={{session.record.{!ns}__Brand_Logo_Id__c}}"></img>
+        </div>
+
+        <!-- Survey Title -->
+        <h1 style="margin-bottom: 20px; padding-bottom: 10px; border-bottom: solid 1px #dddddd;">{{session.record.Name}}</h1>
+
+        <!-- Questions -->
+        <sugoi-question ng-repeat="csq in csqs" csq="csq" guest="guest" csas="csas" ng-hide="csq.{!ns}__Survey_Type__c == 'guest' && guest.record.{!ns}__Secure_Id__c != null" />
+
+        <!-- Button to submit -->
+        <div style="text-align:right;">
+            <button type="button" class="btn btn-primary" ng-click="submit_survey(session.record.Id, csas)">
+                <span class="glyphicon glyphicon-send"></span>&nbsp; 
+                {!$label.submit}
+            </button>
+        </div>
+    </div>
+
+</div>
+
+<!-- Modal for lookup -->
+<script type="text/ng-template" id="T_lookup">
+    <div class="modal-header">
+        <button type="button" class="close" ng-click="cancel()">&times;</button>
+        <h1>{!$label.select_record}</h1>
+    </div>
+    <div class="modal-body">
+        <div class="list-group">
+            <a ng-repeat="record in session.records" class="list-group-item" ng-click="select_record(record)">
+                {{record.Name}}
+            </a>
+        </div>
+    </div>
+</script><!-- Modal for lookup -->
+
+</body>
+
+
+</html>
+</apex:page>

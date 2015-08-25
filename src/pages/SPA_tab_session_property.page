@@ -1,0 +1,152 @@
+<apex:page controller="sessionCtl" showHeader="false" standardStyleSheets="false" applyBodyTag="false" applyHtmlTag="false" docType="html-5.0" cache="true">
+
+<apex:variable var="apexController" value="sessionCtl" />
+<apex:variable var="ns" value="sugoisurvey5" />
+
+<style>
+@media screen and (min-width: 320px) {
+    .brand_logo {
+        height: 60px;
+    }
+}
+@media screen and (min-width: 768px) {
+    .brand_logo {
+        height: 100px;
+    }
+}
+</style>
+
+    <div style="padding: 20px 0 40px 0;">
+
+    <!-- Basic Config -->
+    <div class="panel panel-default">
+        <div class="panel-heading">
+            {!$Label.basic_config}
+        </div>
+        <div class="panel-body">
+            <form class="form-horizontal" role="form">
+                <force-input ng-repeat="field in session.field_sets.basic_config" field="field" record="session.record"></force-input>
+            </form>
+        </div>
+    </div>
+
+    <!-- Survey Link -->
+    <div class="panel panel-default">
+        <div class="panel-heading">
+            {!$Label.survey_site}
+        </div>
+        <div class="panel-body">
+            <form class="form-horizontal" role="form">
+                <div class="form-group">
+                    <label class="col-sm-4 control-label">{!$label.survey_url}</label>
+                    <p class="col-sm-8 form-control-static"><a href="{{config.{!ns}__survey_sites_url__c}}?ssession_id={{session.record.{!ns}__Secure_Id__c|urlEncode}}" target="_blank">{!$label.click_to_move}</a></p>
+                </div>
+            </form>
+            <div style="text-align:center;">
+                <img src="https://chart.googleapis.com/chart?cht=qr&chs=200x200&chl={{config.{!ns}__survey_sites_url__c}}?id={{session.record.Id}}" />
+            </div>
+        </div>
+    </div>
+
+    <!-- Guest Registration -->
+    <div class="panel panel-default">
+        <div class="panel-heading">
+            {!$Label.guest_registration_site}
+        </div>
+        <div class="panel-body">
+            <form class="form-horizontal" role="form">
+                <force-input ng-repeat="field in session.field_sets.guest_registration_config" field="field" record="session.record"></force-input>
+                <div class="form-group" ng-show="session.record.{!ns}__Open_Registration__c == true">
+                    <label class="control-label col-sm-4">URL</label>
+                    <div class="col-sm-8">
+                        <p class="form-control-static"><a href="{{config.{!ns}__survey_sites_url__c}}apex/{!ns}__sites_registration?ssession_id={{session.record.{!ns}__Secure_Id__c|urlEncode}}" target="_blank">{!$label.click_to_move}</a></p>
+                    </div>
+                </div>
+                <div class="form-group" ng-show="session.record.{!ns}__Open_Registration__c == true">
+                    <label class="control-label col-sm-4">{!$ObjectType.Session__c.Fields.Title_For_Registration__c.Label}</label>
+                    <div class="col-sm-8">
+                        <input class="form-control" type="text" ng-model="session.record.{!ns}__Title_For_Registration__c" />
+                    </div>
+                </div>
+                <div class="form-group" ng-show="session.record.{!ns}__Open_Registration__c == true">
+                    <label class="control-label col-sm-4">{!$ObjectType.Session__c.Fields.Privacy_Policy_Url__c.Label}</label>
+                    <div class="col-sm-8">
+                        <input class="form-control" type="url" ng-model="session.record.{!ns}__Privacy_Policy_Url__c" />
+                    </div>
+                </div>
+                <div class="form-group" ng-show="session.record.{!ns}__Open_Registration__c == true">
+                    <label class="control-label col-sm-4">{!$label.field_setting}</label>
+                    <div class="col-sm-8">
+                        <div ng-repeat="field in session.guest_registration_fields" style="margin-bottom: 10px;" class="row">
+                            <div class="col-xs-3" style="text-align: right;">
+                                <button type="button" class="btn btn-default" style="border: solid 0 #ffffff; opacity: 100;" disabled="disabled">{{field.label}}</button>
+                            </div>
+                            <div class="col-xs-9">
+                                <!-- ON/OFF Button -->
+                                <button type="button" class="btn" ng-class="(field.active == true) ? 'btn-danger active' : 'btn-default'" ng-click="field.active = !field.active" style="width: 60px;">
+                                    <span ng-show="field.active == true">ON</span>
+                                    <span ng-show="field.active != true">OFF</span>
+                                </button>
+
+                                <!-- Required Button -->
+                                <button type="button" class="btn" ng-show="field.active == true" ng-class="(field.required == true) ? 'btn-danger active' : 'btn-default'" ng-click="field.required = !field.required" >
+                                    {!$label.required}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Brand -->
+    <div class="panel panel-default">
+        <div class="panel-heading">
+            {!$Label.brand_config}
+        </div>
+        <div class="panel-body">
+            <form class="form-horizontal" role="form">
+                <div class="form-group">
+                    <label class="col-sm-4 control-label">{!$label.logo}</label>
+                    <div class="col-sm-8">
+                        <input class="form-control" type="file" force-content="force-content" />
+                    </div>
+                </div>
+                <div class="form-group" ng-show="session.record.{!ns}__Brand_Logo_Id__c != null">
+                    <div class="col-sm-offset-4 col-sm-8">
+                        <button type="button" class="close" ng-click="delete_brand_logo(session.record.{!ns}__Brand_Logo_Id__c)">&times;</button>
+                        <img class="brand_logo" src="/servlet/servlet.FileDownload?file={{session.record.{!ns}__Brand_Logo_Id__c}}" />
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Chatter Config -->
+    <div class="panel panel-default">
+        <div class="panel-heading">
+            {!$Label.chatter_config}
+        </div>
+        <div class="panel-body">
+            <form class="form-horizontal" role="form">
+                <force-input ng-repeat="field in session.field_sets.chatter_config" field="field" record="session.record"></force-input>
+            </form>
+        </div>
+    </div>
+
+    <!-- Buttons -->
+    <div style="margin: 20px 0; text-align: right;">
+        <!-- Update Button -->
+        <button ng-click="update_session(session.record)" type="button" class="btn btn-success"><span class="glyphicon glyphicon-ok-sign"></span>&nbsp; {!$label.save}</button>
+
+        <!-- Clone Button -->
+        <button ng-click="clone_session(session.record.Id)" type="button" class="btn btn-success"><span class="glyphicon glyphicon-plus-sign"></span>&nbsp; {!$label.clone}</button>
+
+        <!-- Delete Button -->
+        <button ng-click="delete_session(session.record.Id)" type="button" class="btn btn-danger"><span class="glyphicon glyphicon-remove-sign"></span>&nbsp; {!$label.delete}</button>
+    </div>
+
+    </div>
+
+</apex:page>

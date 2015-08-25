@@ -1,0 +1,604 @@
+<apex:page controller="sessionCtl" showHeader="false" standardStyleSheets="false" applyBodyTag="false" applyHtmlTag="false" docType="html-5.0" cache="true">
+
+<apex:variable var="apexController" value="sessionCtl" />
+<apex:variable var="ns" value="sugoisurvey5" />
+
+<style>
+#tab_edit_survey .survey_section {
+    margin-bottom: 20px;
+}
+#tab_edit_survey .btn-selected {
+    background-color: #F6EDF2;
+    border-color: #f4a4d4;
+}
+#tab_edit_survey .survey_box_outer {
+    background-color: #f4f4f4;
+    border-radius: 3px; 
+    margin-bottom: 40px; 
+    border: solid 1px #dddddd;
+}
+#tab_edit_survey .survey_box_inner {
+    width: 90%;
+    margin: 40px auto;
+}
+.panel-sortable:hover {
+    cursor: move;
+}
+</style>
+
+<script>
+angular.module('sugoisurvey')
+.controller('survey_ctl', function($scope, $filter, $q, $timeout, $modal, force, remoting){
+    $scope.open_questionForm = function(mode, for_registration, orig_csq, orig_csos){
+        if (mode == 'new'){
+            var csq = $scope.init_new_csq();
+            csq.{!ns}__For_Registration__c = for_registration;
+            var csos = $scope.init_new_csos(2);
+        } else if (mode == 'update') {
+            var csq = angular.copy(orig_csq);
+            var csos = angular.copy(orig_csos);
+        }
+
+        var modalInstance = $modal.open({
+            templateUrl: "T_newQuestionForm",
+            scope: $scope,
+            controller: "newQuestionFormCtl",
+            resolve: {
+                mode: function(){
+                    return mode;
+                },
+                csq: function(){
+                    return csq;
+                },
+                csos: function(){
+                    return csos;
+                }
+            }
+        });
+    }
+
+    $scope.existing_surveys_for_sort = {
+        update: function(e, ui){
+            $scope.csqs_for_sort = $scope.csqs;
+        }
+    }
+    
+    $scope.create_question = function(csq, csos){
+        remoting.init();
+        $scope.d_create_question(csq, csos)
+        .then(
+            function(result){
+                remoting.progress = 50;
+                return $scope.d_get_session($scope.session.record.Id);
+            },
+            function(event){
+                return $q.reject(event);
+            }
+        )
+        .then(
+            function(record){
+                $scope.session.record = record;
+                remoting.progress = 100;
+                remoting.success('{!$label.survey_has_been_created}');
+            },
+            function(event){
+                remoting.error(event);
+            }
+        );
+    }
+
+    $scope.update_question = function(csq, csos){
+        remoting.init();
+        $scope.d_update_question(csq, csos)
+        .then(
+            function(result){
+                remoting.progress = 50;
+                return $scope.d_get_session($scope.session.record.Id);
+            },
+            function(event){
+                return $q.reject(event);
+            }
+        )
+        .then(
+            function(record){
+                $scope.session.record = record;
+                remoting.progress = 100;
+                remoting.success('{!$label.question_has_been_updated}');
+            },
+            function(event){
+                remoting.error(event);
+            }
+        );
+    }
+
+    $scope.delete_question = function(csq_id){
+        remoting.confirm('{!$label.deleting_question}', function(){
+            remoting.init();
+            force.delete('{!ns}__Custom_Survey_Question__c', csq_id)
+            .then(
+                function(result){
+                    remoting.progress = 50;
+                    return $scope.d_get_session($scope.session.record.Id);
+                },
+                function(event){
+                    return $q.reject(event);
+                }
+            )
+            .then(
+                function(record){
+                    $scope.session.record = record;
+                    remoting.progress = 100;
+                    remoting.success('{!$label.question_has_been_deleted}');
+                },
+                function(event){
+                    remoting.error(event);
+                }
+            );
+        });
+    }
+
+    $scope.d_create_question = function(csq, csos){
+        var d = $q.defer();
+
+        // Generate csos based on csq.guest_form in case of survey type being 'guest'.
+        if (csq.{!ns}__Survey_Type__c == 'guest'){
+            csos = [];
+            angular.forEach(csq.guest_form, function(value, key){
+                if (value.active == true){
+                    csos.push({
+                        '{!ns}__Session__c':csq.Session__c,
+                        '{!ns}__Option__c':key,
+                        '{!ns}__Required__c':value.required
+                    });
+                }
+            });
+        }
+        delete csq.guest_form;
+
+        angular.forEach(csos, function(cso, k){
+            delete cso.$$hashKey;
+        });
+
+        {!ns}.{!apexController}.create_question(
+            csq,
+            csos,
+            function(result, event){
+                if (event.status){
+                    d.resolve(result);
+                } else {
+                    d.reject(event);
+                }
+            },{escape:true}
+        );
+        return d.promise;
+    }
+
+    $scope.d_update_question = function(csq, csos){
+        var d = $q.defer();
+
+        // remove $$hashKey and unrequired property
+        var csq_for_update = angular.copy(csq);
+        if (csos == null){
+            csos = [];
+        }
+
+        var csos_for_update = angular.copy(csos);
+
+        // Generate csos based on csq.guest_form in case of survey type being 'guest'.
+        if (csq.{!ns}__Survey_Type__c == 'guest'){
+            csos_for_update = [];
+            angular.forEach(csq.guest_form, function(value, key){
+                if (value.active == true){
+                    csos_for_update.push({
+                        '{!ns}__Session__c':csq.{!ns}__Session__c,
+                        '{!ns}__Option__c':key,
+                        '{!ns}__Required__c':value.required
+                    });
+                }
+            });
+            delete csq_for_update.guest_form;
+        }
+
+        delete csq_for_update.$$hashKey;
+        delete csq_for_update.attributes;
+        delete csq_for_update.{!ns}__Custom_Survey_Option__r;
+        delete csq_for_update.csas;
+        
+        angular.forEach(csos_for_update, function(v, k){
+            delete v.$$hashKey;
+            delete v.attributes;
+        });
+
+        {!ns}.{!apexController}.update_question(
+            csq_for_update,
+            csos_for_update,
+            function(result, event){
+                if (event.status){
+                    d.resolve(result);
+                } else {
+                    d.reject(event);
+                }
+            },{escape:true}
+        );
+        return d.promise;
+    }
+
+    
+    $scope.d_sort_csqs = function(csqs){
+        var d = $q.defer();
+
+        var csq_ids = [];
+        angular.forEach(csqs, function(csqv, csqk){
+            csq_ids.push(csqv.Id);
+        });
+
+
+        {!ns}.{!apexController}.sort_questions(
+            $scope.session.record.Id,
+            csq_ids,
+            function(result, event){
+                if (event.status){
+                    d.resolve();
+                } else {
+                    d.reject(event);
+                }
+            }
+        );
+        return d.promise;
+    };
+
+    $scope.add_cso = function(csos){
+        csos.push($scope.init_new_cso());
+    }
+
+    $scope.del_cso = function(csos, hashKey){
+        angular.forEach(csos, function(cso, k){
+            if (cso.$$hashKey == hashKey) {
+                csos.splice(k, 1);
+            }
+        });
+    }
+
+    $scope.init_new_csq = function(){
+        // Initialize csq
+        var csq = {};
+        csq.{!ns}__Session__c = $scope.session.record.Id;
+        csq.{!ns}__Required__c = false;
+        csq.{!ns}__Enable_Free_Form__c = false;
+        csq.{!ns}__Survey_Type__c = null;
+        csq.{!ns}__Rating_Steps__c = 5;
+        csq.guest_form = {};
+        angular.forEach($scope.guest.field_sets.new_record_form, function(field, key){
+            csq.guest_form[field.name] = {};
+        });
+        return csq;
+    }
+
+    $scope.init_new_csos = function(num_of_options){
+        var csos = [];
+        for (var i = 0; i < num_of_options; i++){
+            csos.push($scope.init_new_cso());
+        }
+        return csos;
+    }
+
+    $scope.init_new_cso = function(){
+        var cso = {
+            '{!ns}__Session__c': $scope.session.record.Id,
+            '{!ns}__Option__c':''
+        }
+        return cso;
+    }
+
+    $scope.init = function(){
+        // Initialize mode
+        $scope.ui = {
+            mode : 'edit', // the other is 'sort'.
+            for_registration: false
+        }
+
+        $scope.survey_types = [
+            {
+                label : '{!$label.survey_type_checkbox}',
+                name : 'checkbox',
+                icon : 'list'
+            },
+            {
+                label : '{!$label.survey_type_radio}',
+                name : 'radio',
+                icon : 'pushpin'
+            },
+            {
+                label : '{!$label.survey_type_free}',
+                name : 'free',
+                icon : 'pencil'
+            },
+            {
+                label : '{!$label.survey_type_rating}',
+                name : 'rating',
+                icon : 'thumbs-up'
+            },
+            {
+                label : '{!$label.survey_type_number}',
+                name : 'number',
+                icon : 'signal'
+            },
+            {
+                label : '{!$label.survey_type_guest}',
+                name : 'guest',
+                icon : 'user'
+            }
+        ];
+        
+        $scope.$watch('csqs_for_sort', function(new_value, old_value){
+            if (new_value == null){
+                return;
+            }
+            if (new_value !== old_value){
+                remoting.init();
+                $scope.d_sort_csqs($scope.csqs)
+                .then(
+                    function(){
+                        delete $scope.csqs_for_sort;
+                        remoting.progress = 100;
+                        remoting.success('{!$label.sort_has_been_completed}');
+                    },
+                    function(event){
+                        delete $scope.csqs_for_sort;
+                        remoting.error(event);
+                    }
+                );
+            }
+        });
+    };
+    
+    // Initialize All
+    $scope.init();
+})
+.controller('newQuestionFormCtl', function($scope, $modalInstance, $q, $modal, mode, csq, csos){
+    $scope.mode = mode;
+    $scope.csq = csq;
+    $scope.csos = csos;
+
+    if (mode == 'new'){
+        $scope.$watch('csq.{!ns}__Survey_Type__c', function(new_value, old_value){
+            // Auto fill in case of survey type is 'guest'.
+            if (new_value == 'guest' && $scope.csq.{!ns}__Question__c == null){
+                $scope.csq.{!ns}__Question__c = '{!$label.pls_enter_guest_info}';
+            }
+            // Remove auto filled string if survey type is changed from 'guest'.
+            if (old_value == 'guest'){
+                $scope.csq.{!ns}__Question__c = null;
+            }
+        }) 
+    }
+})
+.filter('rating_steps', function() {
+    return function(input, total) {
+        total = parseInt(total);
+        for (var i = 1; i <= total; i++){
+            input.push(i);
+        }
+        return input;
+    };
+});
+</script>
+
+<div style="margin: 20px 0 10px 0; text-align: right;">
+    <button ng-show="rwd.size > 1 && ui.mode == 'edit'" type="button" class="btn btn-sm btn-default" ng-click="ui.mode = 'sort'"><span class="glyphicon glyphicon-sort"></span>&nbsp;{!$label.sort}</button>
+    <button ng-show="rwd.size > 1 && ui.mode == 'sort'" type="button" class="btn btn-sm btn-default" ng-click="ui.mode = 'edit'">{!$label.back}</button>
+    <button type="button" class="btn btn-sm btn-success" ng-click="open_questionForm('new', ui.for_registration)"><span class="glyphicon glyphicon-plus-sign"></span>&nbsp; {!$label.new} {!$label.question}</button>
+</div>
+
+<div style="margin-bottom: 10px;">
+    <ul class="nav nav-pills">
+        <li ng-class="(ui.for_registration == false) ? 'active' : ''"><a href="#" ng-click="ui.for_registration = false" style="padding-top:5px;padding-bottom:5px; font-size:0.9em;">{!$label.for_survey_site}</a></li>
+        <li ng-class="(ui.for_registration == true) ? 'active' : ''"><a href="#" ng-click="ui.for_registration = true" style="padding-top:5px;padding-bottom:5px;font-size:0.9em;">{!$label.for_registration_site}</a></li>
+    </ul>
+</div>
+
+<div style="margin-bottom: 10px; margin-left: 15px;">
+    <a ng-show="!ui.for_registration" href="{{config.{!ns}__survey_sites_url__c}}?ssession_id={{session.record.{!ns}__Secure_Id__c|urlEncode}}" target="_blank"><span class="glyphicon glyphicon-globe"></span>&nbsp;{!$label.for_survey_site}URL</a>
+    <a ng-show="ui.for_registration" href="{{config.{!ns}__survey_sites_url__c}}apex/{!ns}__sites_registration?ssession_id={{session.record.{!ns}__Secure_Id__c|urlEncode}}" target="_blank"><span class="glyphicon glyphicon-globe"></span>&nbsp;{!$label.for_registration_site}URL</a>
+</div>
+
+<div ng-show="ui.mode == 'edit'">
+    <div ng-repeat="csq in csqs" class='panel panel-default' ng-show="csq.{!ns}__For_Registration__c == ui.for_registration">
+        <div class='panel-heading'>
+            <button type="button" class="btn btn-xs btn-default pull-right" ng-click="open_questionForm('update', ui.for_registration, csq, csq.{!ns}__Custom_Survey_Option__r)">
+                <span class="glyphicon glyphicon-pencil"></span>&nbsp;{!$label.edit}
+            </button>
+            {{csq.{!ns}__Question__c}}&nbsp;<span ng-show='csq.{!ns}__Required__c' class='badge'>{!$label.required}</span>
+        </div>
+        <div ng-if="csq.{!ns}__Survey_Type__c == 'checkbox' || csq.{!ns}__Survey_Type__c == 'radio'" class='list-group list-group'>
+            <a ng-repeat="cso in csq.{!ns}__Custom_Survey_Option__r" class='list-group-item'>
+                <span class='glyphicon glyphicon-unchecked'></span>&nbsp;{{cso.{!ns}__Option__c}}
+            </a>
+        </div>
+        <div ng-if="csq.{!ns}__Survey_Type__c == 'free'" class='panel-body'>
+            <div class='form-group'>
+                <textarea class='form-control' rows='2' placeholder='{!$label.up_to_255_letter}' />
+            </div>
+        </div>
+        <div ng-if="csq.{!ns}__Survey_Type__c == 'rating'" class='panel-body'>
+            <div class='form-group'>
+                <span class='glyphicon glyphicon-thumbs-down'></span>&nbsp;
+                <div class='btn-group'>
+                    <button ng-repeat="cso in csq.{!ns}__Custom_Survey_Option__r" class='btn btn-default'>
+                        {{cso.{!ns}__Option_Of_Number__c}}
+                    </button>
+                </div>
+                &nbsp;<span class='glyphicon glyphicon-thumbs-up'></span>
+            </div>
+        </div>
+        <div ng-if="csq.{!ns}__Survey_Type__c == 'number'" class='panel-body'>
+            <div class='form-group'>
+                <input type='number' class='form-control' />
+            </div>
+        </div>
+        <div ng-if="csq.{!ns}__Survey_Type__c == 'guest'" class='panel-body'>
+            <div ng-repeat="field in guest.field_sets.new_record_form" ng-if="csq.guest_form[field.name].active" class="form-group">
+                <label>
+                    {{field.label}}&nbsp;<span ng-show='csq.guest_form[field.name].required == true' class='badge'>{!$label.required}</span>
+                </label>
+                <input class='form-control' type='text' />
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Existing Survey List for Sort -->
+<div ng-show="ui.mode == 'sort'">
+    <div class="alert alert-info">
+        {!$label.you_can_sort_by_drag}
+    </div>
+    <div ui-sortable="existing_surveys_for_sort" ng-model="csqs">
+        <div ng-repeat="csq in csqs" class="panel panel-default panel-sortable" ng-show="csq.{!ns}__For_Registration__c == ui.for_registration">
+            <div class="panel-body">
+                {{csq.{!ns}__Question__c}}
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="text/ng-template" id="T_newQuestionForm">
+<style>
+.survey_section {
+    margin-bottom: 20px;
+}
+.btn-selected {
+    background-color: #F6EDF2;
+    border-color: #f4a4d4;
+}
+.survey_box_outer {
+    border-radius: 3px; 
+}
+.survey_box_inner {
+    width: 90%;
+    margin: 20px auto;
+}
+</style>
+    <div class="survey_box_outer modal-body" style="border-color: #76CB6E; background-color: #f0f0f0">
+        <button type="button" class="close" ng-click="$dismiss()">&times;</button>
+        <div class="survey_box_inner">
+            
+            <!-- Survey Type Selection Panel -->
+            <div class="row survey_section" ng-if="mode == 'new'">
+                <div ng-repeat="survey_type in survey_types" class="col-md-4 col-sm-6 col-xs-12" style="margin-bottom:10px;" ng-hide="(rwd.size == 0 && csq.{!ns}__Survey_Type__c != null && csq.{!ns}__Survey_Type__c != survey_type.name) || (survey_type.name == 'guest' && csq.{!ns}__For_Registration__c == true)">
+                    <button type="button" class="btn btn-block" ng-class="(csq.{!ns}__Survey_Type__c == survey_type.name) ? 'btn-selected active' : 'btn-default'" ng-click="csq.{!ns}__Survey_Type__c = survey_type.name">
+                        <span class="glyphicon glyphicon-{{survey_type.icon}}"></span><br/>
+                        {{survey_type.label}}
+                    </button>
+                </div>
+            </div>
+            <div class="row survey_section" ng-if="mode == 'update'">
+                <div ng-repeat="survey_type in survey_types" ng-if="survey_type.name == csq.{!ns}__Survey_Type__c" class="col-xs-12">
+                    <button type="button" class="btn btn-block btn-selected active" ng-disabled="true">
+                        <span class="glyphicon glyphicon-{{survey_type.icon}}"></span><br/>
+                        {{survey_type.label}}
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Question -->
+            <div class="survey_section" ng-hide="csq.{!ns}__Survey_Type__c == null">
+                <input class="form-control" type="text" placeholder="{!$label.customSurveyQuestion}" ng-model="csq.{!ns}__Question__c"></input>
+            </div>
+            
+            <!-- Checkbox & Radio -->
+            <div class="survey_section" ng-if="csq.{!ns}__Survey_Type__c == 'checkbox' || csq.{!ns}__Survey_Type__c == 'radio'">
+                <!-- Option Form -->
+                <div class="row" ng-repeat="cso in csos" style="margin-bottom: 5px;">
+                    <div class="col-sm-10 col-xs-8">
+                        <input ng-model="cso.{!ns}__Option__c" class="form-control" type="text" placeholder="{!$label.option}"></input>
+                    </div>
+                    <div class="col-sm-2 col-xs-4" style="text-align: right;">
+                        <button type="button" class="btn btn-default" ng-click="del_cso(csos, cso.$$hashKey)"><span class="glyphicon glyphicon-remove"></span></button>
+                    </div>
+                </div>
+                
+                <!-- Other Form -->
+                <input ng-show="csq.{!ns}__Enable_Free_Form__c == true" class="form-control" type="text" placeholder="{!$label.other}" style="margin-bottom:5px;" disabled="true"></input>
+                <textarea ng-show="csq.{!ns}__Enable_Free_Form__c == true" class="form-control" style="margin-bottom:5px;" rows="3" disabled="true"></textarea>
+
+                <!-- Add Option Button -->
+                <button type="button" class="btn btn-default btn-sm" ng-click="add_cso(csos)">
+                    <span class="glyphicon glyphicon-plus-sign"></span>&nbsp;{!$label.add_option}
+                </button>
+            </div>
+            
+            <!--  Free -->
+            <div class="survey_section" ng-if="csq.{!ns}__Survey_Type__c == 'free'">
+                <textarea class="form-control" rows="3" disabled="true" placeholder="{!$label.answer_area}"></textarea>
+            </div>
+
+            <!-- Rating -->
+            <div class="row survey_section" ng-if="csq.{!ns}__Survey_Type__c == 'rating'">
+                <div class="col-sm-3">
+                    <input type="number" class="form-control" ng-model="csq.{!ns}__Rating_Steps__c" placeholder="1-10"></input>
+                </div>
+                <div class="col-sm-7">
+                    <span class="glyphicon glyphicon-thumbs-down"></span>&nbsp;
+                        <div class="btn-group">
+                            <button ng-repeat="n in [] | rating_steps:csq.{!ns}__Rating_Steps__c" type="button" class="btn btn-default" disabled="disabled">{{n}}</button>
+                        </div>
+                    &nbsp;<span class="glyphicon glyphicon-thumbs-up"></span>
+                </div>
+            </div>
+
+            <!-- Number -->
+            <div class="survey_section" ng-if="csq.{!ns}__Survey_Type__c == 'number'">
+                <input type="number" class="form-control" disabled="true" placeholder="{!$label.answer_area}"></input>
+            </div>
+
+            <!-- Guest -->
+            <div class="survey_section form-horizontal" role="form" ng-if="csq.{!ns}__Survey_Type__c == 'guest'">
+                <div ng-repeat="field in guest.field_sets.new_record_form" class="form-group">
+                    <label class="col-xs-4 control-label">{{field.label}}</label>
+                    <div class="col-xs-8">
+                        <!-- ON/OFF Button -->
+                        <button type="button" class="btn" ng-class="(csq.guest_form[field.name].active == true) ? 'btn-danger active' : 'btn-default'" ng-click="csq.guest_form[field.name].active = !csq.guest_form[field.name].active" style="width: 60px;">
+                            <span ng-show="csq.guest_form[field.name].active == true">ON</span>
+                            <span ng-show="csq.guest_form[field.name].active != true">OFF</span>
+                        </button>
+
+                        <!-- Required Button -->
+                        <button type="button" class="btn" ng-show="csq.guest_form[field.name].active == true" ng-class="(csq.guest_form[field.name].required == true) ? 'btn-danger active' : 'btn-default'" ng-click="csq.guest_form[field.name].required = !csq.guest_form[field.name].required" >
+                            {!$label.required}
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Survey Property Swtich -->
+            <div class="survey_section" ng-hide="csq.{!ns}__Survey_Type__c == null">
+                <button type="button" class="btn btn-default btn-sm" ng-class="(csq.{!ns}__Required__c == true) ? 'btn-danger active' : 'btn-default'" ng-click="csq.{!ns}__Required__c = !csq.{!ns}__Required__c">{!$label.answer_required}</button>
+                <button ng-show="csq.{!ns}__Survey_Type__c == 'checkbox' || csq.{!ns}__Survey_Type__c == 'radio'" type="button" class="btn btn-default btn-sm" ng-class="(csq.{!ns}__Enable_Free_Form__c == true) ? 'btn-danger active' : 'btn-default'" ng-click="csq.{!ns}__Enable_Free_Form__c = !csq.{!ns}__Enable_Free_Form__c">{!$label.enable_free_form}</button>
+            </div>
+            
+            <!-- Save Button -->
+            <div class="survey_section" ng-hide="csq.{!ns}__Survey_Type__c == null">
+                <button type="button" class="btn btn-success btn-block" ng-click="$close();create_question(csq, csos)" ng-if="mode == 'new'">
+                    <span class="glyphicon glyphicon-ok-sign"></span>
+                    {!$label.create}
+                </button>
+                <div class="row" ng-if="mode == 'update'">
+                    <div class="col-sm-10 col-xs-8">
+                        <button type="button" class="btn btn-success btn-block" ng-click="$close();update_question(csq, csos)">
+                            <span class="glyphicon glyphicon-ok-sign"></span>
+                            {!$label.update}
+                        </button>
+                    </div>
+                    <div class="col-sm-2 col-xs-4">
+                        <button type="button" class="btn btn-danger pull-right" ng-click="$close();delete_question(csq.Id)">
+                            <span class="glyphicon glyphicon-trash"></span>
+                            {!$label.delete}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</script>
+
+</apex:page>

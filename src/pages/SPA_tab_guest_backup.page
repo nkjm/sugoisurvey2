@@ -1,0 +1,618 @@
+<apex:page controller="sessionCtl" showHeader="false" standardStyleSheets="false" applyBodyTag="false" applyHtmlTag="false" docType="html-5.0" >
+
+<apex:variable var="apexController" value="sessionCtl" />
+<apex:variable var="ns" value="sugoisurvey5" />
+
+<script>
+angular.module('sugoisurvey')
+.controller('guest_ctl', function($scope, $filter, $q, $timeout, $modal, force, remoting){
+    $scope.open_guestDetail = function(record){
+        $scope.guest.record = record;
+        var modalInstance = $modal.open({
+            templateUrl: "T_guestDetail",
+            scope: $scope,
+            controller: "guestDetailCtl",
+            resolve: {
+                csqs: function(){
+                    return $scope.csqs;
+                },
+                guest: function(){
+                    return $scope.guest;
+                }
+            }
+        });
+    }
+
+    $scope.create_guest = function(){
+        remoting.form("新規 " + $scope.guest.label, $scope.guest.field_sets.new_record_form, function(record){
+            record.{!ns}__Session__c = $scope.session.record.Id;
+            remoting.init();
+            force.create('{!ns}__Guest__c', record)
+            .then(
+                function(result){
+                    remoting.progress = 50;
+                    return $scope.d_get_session($scope.session.record.Id);
+                },
+                function(message){
+                    return $q.reject(message);
+                }
+            )
+            .then(
+                function(record){
+                    $scope.session.record = record;
+                    remoting.progress = 100;
+                    remoting.success('{!$label.guest_has_been_created}');
+                },
+                function(message){
+                    remoting.error(message);
+                }
+            );
+        });
+    }
+
+    $scope.get_guests_to_be_delivered = function(){
+        $scope.d_get_guests_to_be_delivered()
+        .then(
+            function(guests){
+                $scope.guests_to_be_delivered = guests;
+            },
+            function(event){
+                remoting.error(event.message);
+            }
+        );
+    };
+    
+    $scope.update_mail = function(){
+        var template_settings = {
+            free: {
+                field_prefix: '{!ns}__Mail',
+                default_to: 'anyone'
+            },
+            guest_pass: {
+                field_prefix: '{!ns}__Mail_Guest_Pass',
+                default_to: 'anyone'
+            },
+            survey_link: {
+                field_prefix: '{!ns}__Mail_Survey_Link',
+                default_to: 'attendees'
+            },
+            handout: {
+                field_prefix: '{!ns}__Mail_Handout',
+                default_to: 'who_have_submitted_survey'
+            }
+        };
+
+        if (typeof $scope.session.record[template_settings[$scope.mail.template].field_prefix + '_To__c'] == 'undefined'){
+            $scope.mail.to = template_settings[$scope.mail.template].default_to;
+            $scope.session.record[template_settings[$scope.mail.template].field_prefix + '_To__c'] = template_settings[$scope.mail.template].default_to;
+        } else {
+            $scope.mail.to = $scope.session.record[template_settings[$scope.mail.template].field_prefix + '_To__c'];
+        }
+
+        if (typeof $scope.session.record[template_settings[$scope.mail.template].field_prefix + '_Subject__c'] == 'undefined'){
+            $scope.mail.subject = '';
+            $scope.session.record[template_settings[$scope.mail.template].field_prefix + '_Subject__c'] = '';
+        } else {
+            $scope.mail.subject = $scope.session.record[template_settings[$scope.mail.template].field_prefix + '_Subject__c'];
+        }
+
+        if (typeof $scope.session.record[template_settings[$scope.mail.template].field_prefix + '_Body_L__c'] == 'undefined'){
+            $scope.mail.body = '';
+            $scope.session.record[template_settings[$scope.mail.template].field_prefix + '_Body_L__c'] = '';
+        } else {
+            $scope.mail.body = $scope.session.record[template_settings[$scope.mail.template].field_prefix + '_Body_L__c'];
+        }
+
+        if (typeof $scope.session.record[template_settings[$scope.mail.template].field_prefix + '_Sender__c'] == 'undefined'){
+            $scope.mail.sender = '';
+            $scope.session.record[template_settings[$scope.mail.template].field_prefix + '_Sender__c'] = '';
+        } else {
+            $scope.mail.sender = $scope.session.record[template_settings[$scope.mail.template].field_prefix + '_Sender__c'];
+        }
+    };
+
+    $scope.send_mail = function(){
+        remoting.confirm('{!$label.delivering_mail}', function(){
+            remoting.init();
+            $scope.d_send_mail()
+            .then(
+                function(num_delivered){
+                    remoting.progress = 50;
+                    remoting.status = num_delivered + '{!$label.has_been_delivered}';
+                    return $scope.d_get_guests_to_be_delivered();
+                },
+                function(event){
+                    return $q.reject(event);
+                })
+            .then(
+                function(guests){
+                    $scope.guests_to_be_delivered = guests;
+                    remoting.progress = 100;
+                    remoting.success();
+                },
+                function(event){
+                    remoting.error(event.message);
+                }
+            );
+        })
+    }
+
+    $scope.clear_delivered_flag = function(){
+        remoting.init();
+        $scope.d_clear_delivered_flag()
+        .then(
+            function(){
+                remoting.progress = 50;
+                return $scope.d_get_guests_to_be_delivered();
+            },
+            function(event){
+                return $q.reject(event);
+            }
+        )
+        .then(
+            function(guests){
+                $scope.guests_to_be_delivered = guests;
+                remoting.progress = 100;
+                remoting.success('{!$label.delivered_flag_has_been_cleared}');
+            },
+            function(event){
+                remoting.error(event.message);
+            }
+        );
+    }
+
+    $scope.d_clear_delivered_flag = function(){
+        var d = $q.defer();
+        {!ns}.{!apexController}.clear_delivered_flag(
+            $scope.session.record.Id,
+            $scope.mail.template,
+            function(result, event){
+                if (event.status){
+                    d.resolve();
+                } else {
+                    d.reject(event);
+                }
+            },{escape:true}
+        );
+        return d.promise;
+    }
+
+    $scope.d_send_mail = function(){
+        var d = $q.defer();
+        $scope.update_mail();
+        {!ns}.{!apexController}.send_mail(
+            $scope.session.record.Id,
+            $scope.mail.template,
+            $scope.mail.to,
+            $scope.mail.subject,
+            $scope.mail.body,
+            $scope.mail.sender,
+            null,
+            function(result, event){
+                if (event.status){
+                    d.resolve(result);
+                } else {
+                    d.reject(event);
+                }
+            },{escape:true}
+        );
+        return d.promise;
+    }
+
+    $scope.d_get_guests_to_be_delivered = function(){
+        var d = $q.defer();
+
+        $scope.update_mail();
+        
+        if (typeof $scope.mail.template == 'undefined' || typeof $scope.mail.to == 'undefined'){
+            d.reject('Template or To is note specified.');
+        }
+        
+        {!ns}.{!apexController}.get_guests_to_be_delivered(
+            $scope.session.record.Id,
+            $scope.mail.template,
+            $scope.mail.to,
+            function(result, event){
+                if (event.status){
+                    d.resolve(result);
+                } else {
+                    d.reject(event);
+                }
+            },{escape:true}
+        );
+        return d.promise;
+    }
+
+    $scope.init = function(){
+        $scope.mode = "guest_list"; // the other is 'mail'.
+        $scope.mail = {};
+        $scope.mail.template = 'free';
+
+        $scope.$watch('session.record.Id', function(new_value, old_value){
+            if (new_value == null){
+                $scope.guest.record = {};
+                $scope.guest.records = [];
+                $scope.guests_to_be_delivered = [];
+                return;
+            }
+            if (new_value != old_value){
+                $scope.guest.record = {};
+            }
+        });
+
+        $scope.$watch('session.record', function(new_value, old_value){
+            if (typeof new_value == 'undefined' || new_value.Id == null){
+                return;
+            }
+            if (new_value !== old_value){
+                $scope.guest.records = $scope.session.record.{!ns}__Guest__r;
+
+                angular.forEach($scope.guest.records, function(record, key){
+                    if (record.Id == $scope.guest.record.Id){
+                        $scope.guest.record = record;
+                    }
+                });
+
+                $scope.d_get_guests_to_be_delivered()
+                .then(
+                    function(guests){
+                        $scope.guests_to_be_delivered = guests;
+                    },
+                    function(event){
+                        remoting.error(event.message);
+                    }
+                );
+            }
+        });
+
+        /* Streaming API Demo */
+        /*
+        $.cometd.init({
+            url: window.location.protocol+'//'+window.location.hostname+'/cometd/29.0',
+            requestHeaders: { Authorization: 'OAuth {!$Api.Session_ID}'},
+            appendMessageTypeToURL : false
+        });
+
+        $.cometd.subscribe('/topic/checkin', function(message) {
+            console.log(message);
+            $scope.d_get_session($scope.session.record.Id)
+            .then(
+                function(record){
+                    $scope.session.record = record;
+                    console.log($scope.session.record);
+                },
+                function(event){
+                    $scope.callback_error(event.message);
+                }
+            );
+        });
+        */
+        /* Streaming API Demo */
+    };
+
+    $scope.init();
+})
+.controller('guestDetailCtl', function($scope, $modalInstance, $q, $modal, csqs, guest, force, remoting){
+    $scope.d_get_answers_by_guest = function(guest_id){
+        var d = $q.defer();
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.sessionCtl.get_answers_by_guest}',
+            guest_id,
+            function(result,event){
+                if (event.status){
+                    d.resolve(result);
+                } else {
+                    d.reject(event);
+                }
+            },{escape:true}
+        );
+        return d.promise;
+    }
+
+    $scope.d_save_as_contact = function(guest_id){
+        var d = $q.defer();
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.sessionCtl.save_guest_as_contact}',
+            guest_id,
+            function(result, event){
+                if (event.status){
+                    d.resolve();
+                } else {
+                    d.reject(event);
+                }
+            },{escape:true}
+        );
+        return d.promise;
+    }
+
+    $scope.save_as_contact = function(guest_record){
+        remoting.init();
+
+        // Check required field
+        if (guest_record.Id == null || guest_record.{!ns}__Last_Name__c == null){
+            remoting.error('{!$label.required_parameter_is_missing}');
+            return;
+        }
+
+        if (guest_record.{!ns}__Contact__c != null){
+            remoting.error('{!$label.contact_already_exist}');
+            return;
+        }
+
+        $scope.d_save_as_contact(guest_record.Id)
+        .then(
+            function(){
+                remoting.progress = 50;
+                return $scope.d_get_session($scope.session.record.Id);
+            },
+            function(event){
+                return $q.reject(event);
+            }
+        )
+        .then(
+            function(record){
+                $scope.session.record = record;
+                remoting.progress = 100;
+                remoting.success('{!$label.saved}');
+            },
+            function(event){
+                remoting.error(event.message);
+            }
+        );
+    }
+
+    $scope.update_guest = function(record){
+        remoting.init()
+        force.update('{!ns}__Guest__c', record)
+        .then(
+            function(result){
+                remoting.progress = 50;
+                return $scope.d_get_session($scope.session.record.Id);
+            },
+            function(error){
+                return $q.reject(error);
+            }
+        )
+        .then(
+            function(record){
+                $scope.session.record = record;
+                remoting.progress = 100;
+                remoting.success('{!$label.guest_has_been_updated}');
+            },
+            function(error){
+                remoting.error(error[0].message);
+            }
+        );
+    }
+
+    $scope.delete_guest = function(record_id){
+        $modalInstance.close();
+        remoting.confirm('{!$label.deleting_guest}', function(){
+            
+            remoting.init();
+            force.delete('{!ns}__Guest__c', record_id)
+            .then(
+                function(result){
+                    remoting.progress = 50;
+                    return $scope.d_get_session($scope.session.record.Id);
+                },
+                function(message){
+                    return $q.reject(message);
+                }
+            )
+            .then(
+                function(record){
+                    $scope.session.record = record;
+                    remoting.progress = 100;
+                    remoting.success('{!$label.guest_has_been_deleted}');
+                },
+                function(message){
+                    remoting.error(message);
+                }
+            );
+        });
+    }
+
+    $scope.guest_report = {};
+    $scope.guest_report.record = guest.record;
+    $scope.csqs = csqs;
+    $scope.guest = guest;
+    
+    remoting.init(false);
+    $scope.d_get_answers_by_guest(guest.record.Id)
+    .then(
+        function(csas){
+            remoting.progress = 100;
+            remoting.success();
+            $scope.guest_report.csas = csas;
+            $scope.guest_report.csqs = $scope.csqs;
+        },
+        function(event){
+            remoting.error(event.message);
+        }
+    );
+});
+</script>
+
+<div ng-show="mode == 'guest_list'">
+    <!-- Mail and New Guest Button -->
+    <div style="margin: 20px 0; text-align: right;">
+        <button ng-click="create_guest()" type="button" class="btn btn-success"><span class="glyphicon glyphicon-plus-sign"></span>&nbsp;{!$label.create_guest}</button>
+        <button ng-click="mode = 'mail'" type="button" class="btn btn-success"><span class="glyphicon glyphicon-envelope"></span>&nbsp;{!$label.send_mail}</button>
+    </div>
+    
+    <!-- Guests -->
+    <table class="table table-hover">
+        <thead>
+            <tr>
+                <th>{!$ObjectType.sugoisurvey5__Guest__c.Fields.sugoisurvey5__Company__c.Label}</th>
+                <th>{!$ObjectType.sugoisurvey5__Guest__c.Fields.sugoisurvey5__Name__c.Label}</th>
+                <th ng-show="rwd.size > 0">{!$ObjectType.sugoisurvey5__Guest__c.Fields.sugoisurvey5__Email__c.Label}</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr ng-repeat="guest in guest.records" class="row_guest_{{guest.Id}}" ng-click="open_guestDetail(guest)">
+                <td>{{guest.{!ns}__Company__c}}</td>
+                <td>{{guest.{!ns}__Name__c}}</td>
+                <td ng-show="rwd.size > 0">{{guest.{!ns}__Email__c}}</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<div ng-show="mode == 'mail'" style="margin-bottom: 40px;">
+    <!-- Mail Button -->
+    <div style="margin: 20px 0; text-align: right;">
+        <button ng-click="mode = 'guest_list'" type="button" class="btn btn-default">{!$label.cancel}</button>
+    </div>
+    <form class="form-horizontal" role="form" name="mail_form">
+    
+        <!-- Template Button -->
+        <div class="form-group">
+            <label class="col-sm-3 control-label">{!$label.template}</label>
+            <div class="col-sm-9">
+                <button type="button" class="btn btn-default" ng-class="(mail.template == 'free') ? 'btn-danger active' : 'btn-default'" ng-click="mail.template = 'free'; get_guests_to_be_delivered()">{!$label.free}</button>
+                <!--
+                <button type="button" class="btn btn-default" ng-class="(mail.template == 'guest_pass') ? 'btn-danger active' : 'btn-default'" ng-click="mail.template = 'guest_pass'; get_guests_to_be_delivered()">{!$label.guest_pass}</button>
+                -->
+                <button type="button" class="btn btn-default" ng-class="(mail.template == 'survey_link') ? 'btn-danger active' : 'btn-default'" ng-click="mail.template = 'survey_link'; get_guests_to_be_delivered()">{!$label.survey_link}</button>
+                <button type="button" class="btn btn-default" ng-class="(mail.template == 'handout') ? 'btn-danger active' : 'btn-default'" ng-click="mail.template = 'handout'; get_guests_to_be_delivered()">{!$label.handout}</button>
+            </div>
+        </div>
+        
+        <!-- Autosend Checkbox -->
+        <div ng-show="mail.template == 'handout'" class="form-group">
+            <div class="col-sm-offset-3 col-sm-9">
+                <div class="checkbox">
+                    <label>
+                        <input ng-model="session.record.{!ns}__Mail_Handout_Send_On_Submission__c" type="checkbox"></input>{!$label.autosend_on_survey_submission}
+                    </label>
+                </div>
+            </div>
+        </div>
+        
+        <!-- To -->
+        <div class="form-group">
+            <label class="col-sm-3 control-label">{!$label.deliver_destinations}</label>
+            <div class="col-sm-9">
+                <select ng-show="mail.template == 'free'" ng-model="session.record.{!ns}__Mail_To__c" ng-change="get_guests_to_be_delivered()" class="form-control">
+                    <option value="anyone">{!$label.anyone}</option>
+                    <option value="attendees">{!$label.attendees}</option>
+                    <option value="who_have_submitted_survey">{!$label.who_have_submitted_survey}</option>
+                </select>
+                <select ng-show="mail.template == 'guest_pass'" ng-model="session.record.{!ns}__Mail_Guest_Pass_To__c" ng-change="get_guests_to_be_delivered()" class="form-control">
+                    <option value="anyone">{!$label.anyone}</option>
+                </select>
+                <select ng-show="mail.template == 'survey_link'" ng-model="session.record.{!ns}__Mail_Survey_Link_To__c" ng-change="get_guests_to_be_delivered()" class="form-control">
+                    <option value="anyone">{!$label.anyone}</option>
+                    <option value="attendees">{!$label.attendees}</option>
+                </select>
+                <select ng-show="mail.template == 'handout'" ng-model="session.record.{!ns}__Mail_Handout_To__c" ng-change="get_guests_to_be_delivered()" class="form-control">
+                    <option value="anyone">{!$label.anyone}</option>
+                    <option value="attendees">{!$label.attendees}</option>
+                    <option value="who_have_submitted_survey">{!$label.who_have_submitted_survey}</option>
+                </select>
+            </div>
+        </div>
+        
+        <!-- Subject -->
+        <div class="form-group">
+            <label class="col-sm-3 control-label">{!$label.subject}</label>
+            <div class="col-sm-9">
+                <input ng-show="mail.template == 'free'" ng-model="session.record.{!ns}__Mail_Subject__c" type="text" class="form-control"></input>
+                <input ng-show="mail.template == 'guest_pass'" ng-model="session.record.{!ns}__Mail_Guest_Pass_Subject__c" type="text" class="form-control"></input>
+                <input ng-show="mail.template == 'survey_link'" ng-model="session.record.{!ns}__Mail_Survey_Link_Subject__c" type="text" class="form-control"></input>
+                <input ng-show="mail.template == 'handout'" ng-model="session.record.{!ns}__Mail_Handout_Subject__c" type="text" class="form-control"></input>
+            </div>
+        </div>
+        
+        <!-- Body -->
+        <div class="form-group">
+            <label class="col-sm-3 control-label">{!$label.body}</label>
+            <div class="col-sm-9">
+                <textarea ng-show="mail.template == 'free'" ng-model="session.record.{!ns}__Mail_Body_L__c" class="form-control" rows="8"></textarea>
+                <textarea ng-show="mail.template == 'guest_pass'" ng-model="session.record.{!ns}__Mail_Guest_Pass_Body_L__c" class="form-control" rows="8" disabled="disabled"></textarea>
+                <textarea ng-show="mail.template == 'survey_link'" ng-model="session.record.{!ns}__Mail_Survey_Link_Body_L__c" class="form-control" rows="8" disabled="disabled"></textarea>
+                <textarea ng-show="mail.template == 'handout'" ng-model="session.record.{!ns}__Mail_Handout_Body_L__c" class="form-control" rows="8"></textarea>
+            </div>
+        </div>
+        
+        <!-- Sender -->
+        <div class="form-group">
+            <label class="col-sm-3 control-label">{!$label.sender}</label>
+            <div class="col-sm-9">
+                <input ng-show="mail.template == 'free'" ng-model="session.record.{!ns}__Mail_Sender__c" type="email" class="form-control"></input>
+                <input ng-show="mail.template == 'guest_pass'" ng-model="session.record.{!ns}__Mail_Guest_Pass_Sender__c" type="email" class="form-control"></input>
+                <input ng-show="mail.template == 'survey_link'" ng-model="session.record.{!ns}__Mail_Survey_Link_Sender__c" type="email" class="form-control"></input>
+                <input ng-show="mail.template == 'handout'" ng-model="session.record.{!ns}__Mail_Handout_Sender__c" type="email" class="form-control"></input>
+            </div>
+        </div>
+        
+        <!-- Save and Send Button -->
+        <div class="form-group">
+            <div class="col-sm-offset-3 col-sm-9" style="text-align:right;">
+                <button ng-disabled="!mail_form.$valid" ng-click="update_session(session.record)" type="button" class="btn btn-success"><span class="glyphicon glyphicon-ok-sign"></span>&nbsp;{!$label.save}</button>
+                <button ng-disabled="!mail_form.$valid" ng-click="send_mail()" type="button" class="btn btn-primary"><span class="glyphicon glyphicon-send"></span>&nbsp;{!$label.send}</button>
+            </div>
+        </div>
+        
+    </form>
+    
+    <h2>{!$label.deliver_destinations}</h2>
+    
+    <!-- Guests -->
+    <table class="table table-hover">
+        <thead>
+            <tr>
+                <th>{!$ObjectType.sugoisurvey5__Guest__c.Fields.sugoisurvey5__Company__c.Label}</th>
+                <th>{!$ObjectType.sugoisurvey5__Guest__c.Fields.sugoisurvey5__Name__c.Label}</th>
+                <th>{!$ObjectType.sugoisurvey5__Guest__c.Fields.sugoisurvey5__Email__c.Label}</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr ng-repeat="guest in guests_to_be_delivered" class="row_guest_{{guest.Id}}">
+                <td>{{guest.{!ns}__Company__c}}</td>
+                <td>{{guest.{!ns}__Name__c}}</td>
+                <td>{{guest.{!ns}__Email__c}}</td>
+            </tr>
+        </tbody>
+    </table>
+    
+    <!-- Button for clear delivered flag -->
+    <div style="text-align:right;">
+        <button ng-click="clear_delivered_flag()" type="button" class="btn btn-success">{!$label.clear_delivered_flag}</button>
+    </div>
+
+    <!-- Modal for guest detail -->
+    <script type="text/ng-template" id="T_guestDetail">
+        <div class="modal-body">
+            <div ng-show="guest_report.record != null">
+                <div style="margin-bottom: 20px;">
+                    &nbsp;<button type="button" class="close" ng-click="$dismiss()">&times;</button>
+                </div>
+
+                <div style="text-align:right; margin-bottom: 3px;" ng-show="guest_report.record.{!ns}__Contact__c">
+                    <a href="/{{guest_report.record.{!ns}__Contact__c}}" target="_blank">{!$label.go_to_contact}</a>
+                </div>
+
+                <form class="form-horizontal" role="form">
+                    <force-input ng-repeat="field in guest.field_sets.basic_config" field="field" record="guest_report.record"></force-input>
+
+                    <div class="form-group">
+                        <div class="col-sm-offset-4 col-sm-8">
+                            <button type="button" class="btn btn-success" ng-class="(rwd.size == 0) ? 'btn-xs' : 'btn-md'" ng-click="update_guest(guest.record)"><span class="glyphicon glyphicon-ok-sign"></span>&nbsp; {!$label.update}</button>
+                            <button type="button" class="btn btn-success" ng-class="(rwd.size == 0) ? 'btn-xs' : 'btn-md'" ng-click="save_as_contact(guest_report.record)"><span class="glyphicon glyphicon-user"></span>&nbsp; {!$label.save_as_contact}</button>
+                            <button type="button" class="btn btn-danger" ng-class="(rwd.size == 0) ? 'btn-xs' : 'btn-md'" ng-click="delete_guest(guest.record.Id)"><span class="glyphicon glyphicon-trash"></span>&nbsp; {!$label.delete}</button>
+                        </div>
+                    </div>
+                </form>
+
+                <progressbar ng-show="remoting.progress < 100" class="progress-striped active" max="100" value="100" type="primary" animate="false"></progressbar>
+
+                <sugoi-report-by-guest ng-repeat="csq in guest_report.csqs" csq="csq" csas="guest_report.csas" />
+            </div>
+        </div>
+    </script><!-- Modal for guestList -->
+</div>
+
+</apex:page>

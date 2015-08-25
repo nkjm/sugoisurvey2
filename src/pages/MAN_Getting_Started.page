@@ -1,0 +1,226 @@
+<apex:page controller="manCtl" standardStylesheets="false" showheader="false" docType="html-5.0" applyHtmlTag="false" applyBodyTag="false" cache="true" >
+
+<apex:variable var="ns" value="sugoisurvey5" />
+
+<html>
+<head>
+<link rel="stylesheet" type="text/css" href="{!URLFOR($Resource.bootstrap_3_1_1_dist_zip, 'bootstrap-3.1.1-dist/css/bootstrap.min.css')}" />
+<script type="text/javascript" src="{!$Resource.jquery_2_1_0_min_js}"></script>
+<script type="text/javascript" src="{!$Resource.angular_min_js}"></script>
+<script type="text/javascript" src="{!$Resource.forcetk4ng_js}"></script>
+<script type="text/javascript" src="{!$Resource.ui_bootstrap_tpls_0_11_0_js}"></script>
+<script type="text/javascript" src="{!$Resource.forceInput_js}"></script>
+<script type="text/javascript" src="{!$Resource.modalRemoting_js}"></script>
+<style>
+.sfbootstrap ol {
+    color: #666666;
+    font-size: 14px;
+    line-height: 2;
+}
+.sfbootstrap .procedure_block {
+    margin-bottom: 20px;
+}
+img {
+    width: 500px;
+}
+</style>
+<script>
+angular.module("sugoisurvey", [])
+angular.module('sugoisurvey', ['ui.bootstrap', 'modalRemoting','forcetk4ng'])
+.controller('ManCtl', function($scope, $filter, $q, $modal, remoting, force){
+    $scope.goStep = function(step){
+        $scope.ui.step = step;
+        window.scrollTo(0, 0);
+    }
+
+    $scope.d_generateConfig = function(){
+        var d = $q.defer();
+        Visualforce.remoting.Manager.invokeAction(
+            "{!$RemoteAction.manCtl.generate_config}",
+            "{!JSENCODE($CurrentPage.Url)}",
+            function(result, event){
+                if (event.status){
+                    d.resolve();
+                } else {
+                    d.reject(event);
+                }
+            }
+        );
+        return d.promise;
+    }
+
+    $scope.d_assignPermissionSet = function(){
+        var d = $q.defer();
+        Visualforce.remoting.Manager.invokeAction(
+            "{!$RemoteAction.manCtl.assign_permission_set}",
+            function(result, event){
+                if (event.status){
+                    d.resolve();
+                } else {
+                    d.reject(event);
+                }
+            }
+        );
+        return d.promise;
+    }
+
+    $scope.d_startCron = function(){
+        var d = $q.defer();
+        Visualforce.remoting.Manager.invokeAction(
+            "{!$RemoteAction.manCtl.start_cron}",
+            function(result, event){
+                if (event.status){
+                    d.resolve();
+                } else {
+                    d.reject(event);
+                }
+            }
+        );
+        return d.promise;
+    }
+
+    $scope.startInit = function(){
+        remoting.init();
+        remoting.status = '{!$label.generate_config_inprogress}';
+        $scope.d_generateConfig()
+        .then(
+            function(){
+                remoting.progress = 33;
+                remoting.status = '{!$label.assign_perm_set_inprogress}';
+                return $scope.d_assignPermissionSet();
+            },
+            function(event){
+                return $q.reject(event);
+            }
+        )
+        .then(
+            function(){
+                remoting.progress = 66;
+                remoting.status = '{!$label.start_cron_inprogress}';
+                return $scope.d_startCron();
+            },
+            function(event){
+                return $q.reject(event);
+            }
+        )
+        .then(
+            function(){
+                remoting.progress = 100;
+                remoting.status = '{!$label.init_completed} {!$label.redirecting_to_top_page}';
+                window.top.location.href = '/apex/{!ns}__SPA_session';
+            },
+            function(event){
+                remoting.error(event);
+            }
+        )
+    }
+
+    force.setAccessToken("{!$Api.Session_ID}");
+    $scope.ui = {};
+    $scope.data = {};
+    $scope.data.steps = [
+        {label : '{!$label.enable_sites}', name : 'enable_sites'},
+        {label : '{!$label.assign_permission_sets}', name : 'assign_permission_sets'},
+        {label : '{!$label.launch_app}', name : 'launch_app'}
+    ];
+});
+</script>
+</head>
+<body>
+<div ng-app="sugoisurvey">
+    
+<apex:outputText rendered="{!$Setup.config__c.initialized__c == true}">
+<div ng-controller="ManCtl" class="container-fluid" style="margin-top:50px; margin-bottom:50px; text-align: center;">
+    <button class="btn btn-primary btn-lg" onClick="window.top.location.href='/apex/{!ns}__SPA_session'">{!$label.launch_app}</button>
+</div>
+</apex:outputText>
+
+    
+<apex:outputText rendered="{!$Setup.config__c.initialized__c == false}">
+<div ng-controller="ManCtl" class="container-fluid" style="margin-top:30px; margin-bottom:30px;">
+    <div class="row">
+        <div class="col-sm-12">
+            <h4 style="margin-top: 0; padding-bottom: 10px; border-bottom: solid 1px #dddddd; display: block; color: #666666;">
+                {!$label.sugoisurvey} {!$label.initial_setup}
+            </h4>
+        </div>
+    </div>
+    <div class="row">
+        
+        <div class="col-sm-4">
+            <ul class="nav nav-pills nav-stacked" ng-init="ui.step = 'enable_sites'">
+                <li ng-repeat="step in data.steps" style="margin-left:0px;" ng-class="(ui.step == step.name) ? 'active' : ''" ng-click="ui.step = step.name"><a href="#">Step {{$index + 1}}. {{step.label}}</a></li>
+            </ul>
+        </div>
+        
+        <div class="col-sm-8">
+            
+            <!-- Step : Enable Sites -->
+            <div ng-show="ui.step == 'enable_sites'">
+                <div class="alert alert-info">
+                    {!$label.MAN_enable_sites_overview}
+                </div>
+                <div class="procedure_block">
+                    <ol>
+                        <li>{!$label.MAN_enable_sites_go_to_sites_setup_page}<br/><a href="/0DM/o" target="_blank"><span class="glyphicon glyphicon-play"></span>&nbsp;{!$label.sites_setup_page}</a></li>
+                        <li>{!$label.MAN_enable_sites_activate_sites}</li>
+                        <img src="https://dl.dropboxusercontent.com/u/149862/sugoisurvey/getting_started/enable_sites-activate_sites.png"/>
+                        <li>{!$label.MAN_enable_sites_click_new_site}</li>
+                        <img src="https://dl.dropboxusercontent.com/u/149862/sugoisurvey/getting_started/enable_sites-click_new_site.png"/>
+                        <li>{!$label.MAN_enable_sites_click_save_site}</li>
+                        <img src="https://dl.dropboxusercontent.com/u/149862/sugoisurvey/getting_started/enable_sites-click_save_site.png"/>
+                        <li>{!$label.MAN_enable_sites_complete}</li>
+                        <img src="https://dl.dropboxusercontent.com/u/149862/sugoisurvey/getting_started/enable_sites-complete.png"/>
+                    </ol>
+                </div>
+                <div style="text-align:right;">
+                    <button class="btn btn-primary" ng-click="goStep('assign_permission_sets')">{!$label.next}</button>
+                </div>
+            </div>
+            
+            <!-- Step : Assign Permission Sets -->
+            <div ng-show="ui.step == 'assign_permission_sets'">
+                <div class="alert alert-info">
+                    {!$label.MAN_assign_permission_sets_overview}                
+                </div>
+                <div class="procedure_block">
+                    <ol>
+                        <li>{!$label.MAN_assign_perm_sets_go_to_perm_set_setup_page}<br/><a href="/0PS" target="_blank"><span class="glyphicon glyphicon-play"></span>&nbsp;{!$label.perm_set_setup_page}</a></li>
+                        <li>{!$label.MAN_assign_perm_sets_click_perm_set}</li>
+                        <img src="https://dl.dropboxusercontent.com/u/149862/sugoisurvey/getting_started/permission_set-click_permission_set.png"/>
+                        <li>{!$label.MAN_assign_perm_sets_click_manage_assignment}</li>
+                        <img src="https://dl.dropboxusercontent.com/u/149862/sugoisurvey/getting_started/permission_set-click_manage_assignment.png"/>
+                        <li>{!$label.MAN_assign_perm_sets_click_add_assignment}</li>
+                        <img src="https://dl.dropboxusercontent.com/u/149862/sugoisurvey/getting_started/permission_set-click_add_assignment.png"/>
+                        <li>{!$label.MAN_assign_perm_sets_select_user}</li>
+                        <img src="https://dl.dropboxusercontent.com/u/149862/sugoisurvey/getting_started/permission_set-select_user.png"/>
+                        <li>{!$label.MAN_assign_perm_sets_complete}</li>
+                        <img src="https://dl.dropboxusercontent.com/u/149862/sugoisurvey/getting_started/permission_set-complete.png"/>
+                    </ol>
+                </div>
+                <div style="text-align:right;">
+                    <button class="btn btn-primary" ng-click="goStep('launch_app')">{!$label.next}</button>
+                </div>
+            </div>
+            
+            <!-- Launch App -->
+            <div ng-show="ui.step == 'launch_app'">
+                <div class="alert alert-info">
+                    {!$label.MAN_launch_app_overview}
+                </div>
+                <div>
+                    <div style="text-align:right;">
+                        <button class="btn btn-success" ng-click="startInit()"><span class="glyphicon glyphicon-ok"></span>&nbsp;{!$label.start}</button>
+                    </div>
+                </div>
+            </div>
+            
+        </div>
+    </div>
+</div>
+</apex:outputText>
+
+</div>
+</body>
+</html>
+</apex:page>

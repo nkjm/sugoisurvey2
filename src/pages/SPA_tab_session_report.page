@@ -1,0 +1,574 @@
+<apex:page controller="sessionCtl" showHeader="false" standardStyleSheets="false" applyBodyTag="false" applyHtmlTag="false" docType="html-5.0"  cache="true">
+
+<apex:variable var="apexController" value="sessionCtl" />
+<apex:variable var="ns" value="sugoisurvey5" />
+
+<style>
+.list-group-item:hover {
+    cursor: pointer;
+}
+tr:hover {
+    cursor: pointer;
+}
+@media screen and (min-width: 320px) {
+    .pie_chart_container {
+        width: 250px;
+        margin: 0 auto;
+    }
+    .bar_chart_container {
+        width: 250px;
+        margin: 0 auto;
+    }
+}
+@media screen and (min-width: 768px) {
+    .pie_chart_container {
+        width: 250px;
+        margin: 0 auto;
+    }
+    .bar_chart_container {
+        width: 400px;
+        margin: 0 auto;
+    }
+}
+@media screen and (min-width: 970px) {
+    .pie_chart_container {
+        width: 250px;
+        margin: 0 auto;
+    }
+    .bar_chart_container {
+        width: 500px;
+        margin: 0 auto;
+    }
+}
+</style>
+
+<script>
+google.load('visualization', '1.0', {'packages':['corechart']});
+
+j$ = jQuery.noConflict();
+
+angular.module('sugoisurvey')
+.controller('report_ctl', function($scope, $filter, $q, $timeout, $modal, remoting){
+
+    $scope.open_guestList = function(session_id, search_by, search_value){
+        var modalInstance = $modal.open({
+            templateUrl: "T_guestList",
+            scope: $scope,
+            controller: "guestListCtl",
+            resolve: {
+                session_id: function(){
+                    return session_id;
+                },
+                search_by: function(){
+                    return search_by;
+                },
+                search_value: function(){
+                    return search_value;
+                },
+                csqs: function(){
+                    return $scope.csqs;
+                },
+                guest: function(){
+                    return $scope.guest;
+                }
+            }
+        });
+    }
+
+    $scope.draw_bar_chart = function(csq){
+        var data = new google.visualization.DataTable();
+        data.addColumn('string', '{!$Label.option}');
+        data.addColumn('number', '{!$Label.sum}');
+
+        var survey_data = [];
+        angular.forEach(csq.{!ns}__Custom_Survey_Option__r, function(cso, key){
+            survey_data.push([cso.{!ns}__Option__c, cso.{!ns}__Sum__c]);
+        });
+        data.addRows(survey_data);
+
+        var height = csq.{!ns}__Custom_Survey_Option__r.length * 70;
+        if ($scope.rwd.size == 0){
+            width = 250;
+        } else if ($scope.rwd.size == 1){
+            width = 400;
+        } else if ($scope.rwd.size == 2){
+            width = 500;
+        }
+
+        var options = {
+            'width':width,
+            'height':height,
+            'colors':['#FFCEEC'],
+            'chartArea':{width:'85%',height:'80%'},
+            'hAxis':{title:'{!$Label.sum}',viewWindowMode:'explicit',viewWindow:{min:0,max:'auto'}},
+            'vAxis':{title:'{!$Label.option}',textPosition:'in'},
+            'legend':{position:'none'}
+        };
+
+        var chart = new google.visualization.BarChart(document.getElementById('bar_chart_' + csq.Id));
+        chart.draw(data, options);
+
+        // register click event
+        google.visualization.events.addListener(chart, 'select', function(){
+            var selectedData = chart.getSelection();
+            row = selectedData[0].row;
+            $scope.open_guestList(csq.{!ns}__Session__c, 'cso_id', csq.{!ns}__Custom_Survey_Option__r[row].Id);
+            chart.setSelection();
+        });
+    }
+
+    $scope.draw_comment_table = function(csq){
+        
+    }
+
+    $scope.draw_pie_chart = function(csq){
+        var data = new google.visualization.DataTable();
+        data.addColumn('string', '{!$Label.rate}');
+        data.addColumn('number', '{!$Label.sum}');
+
+        var survey_data = [];
+        if (csq.{!ns}__Survey_Type__c == 'number'){
+            survey_data = $scope.generate_survey_data_for_number(csq);
+        } else {
+            angular.forEach(csq.{!ns}__Custom_Survey_Option__r, function(cso, key){
+                survey_data.push([String(cso.{!ns}__Option_Of_Number__c), cso.{!ns}__Sum__c]);
+            })
+        }
+        
+        data.addRows(survey_data);
+        var options = {
+            'width':250,
+            'height':280,
+            'chartArea':{width:'90%',height:'80%'},
+            'legend':{position:'top'},
+            'is3D':false
+        };
+
+        var chart = new google.visualization.PieChart(document.getElementById('pie_chart_' + csq.Id));
+        chart.draw(data, options);
+
+        // register click event
+        google.visualization.events.addListener(chart, 'select', function(){
+            var selectedData = chart.getSelection();
+            row = selectedData[0].row;
+            if (csq.{!ns}__Survey_Type__c == 'number'){
+                $scope.open_guestList(csq.{!ns}__Session__c, 'range', survey_data[row][0]);
+            } else {
+                $scope.open_guestList(csq.{!ns}__Session__c, 'cso_id', csq.{!ns}__Custom_Survey_Option__r[row].Id);
+            }
+            chart.setSelection();
+        });
+    }
+
+    $scope.generate_survey_data_for_number = function(csq){
+        var scale = 5;
+        var min = csq.{!ns}__Custom_Survey_Option__r[0].{!ns}__Min__c;
+        var max = csq.{!ns}__Custom_Survey_Option__r[0].{!ns}__Max__c;
+        var range = Math.ceil((max - min) / scale);
+        var survey_data = [];
+        var floor = min;
+        for (i = 1; i <= scale; i++){
+            var ceil = floor + range;
+            var count = 0;
+            angular.forEach(csq.csas, function(csa, key){
+                if (csa.{!ns}__Free_Form_Of_Number__c >= floor && csa.{!ns}__Free_Form_Of_Number__c < ceil){
+                    count++;
+                }
+            });
+            if (ceil > max){
+                ceil = max + 1;
+            }
+            var label = String(floor) + '-' + String(ceil - 1);
+            survey_data.push([label, count]);
+            floor = ceil;
+        }
+        return survey_data;
+    }
+
+    $scope.draw_report = function(csq){
+        if (csq.{!ns}__Survey_Type__c == 'checkbox'){
+            $scope.draw_bar_chart(csq);
+        } else if (csq.{!ns}__Survey_Type__c == 'radio'){
+            $scope.draw_bar_chart(csq);
+        } else if (csq.{!ns}__Survey_Type__c == 'free'){
+            $scope.draw_comment_table(csq);
+        } else if (csq.{!ns}__Survey_Type__c == 'rating'){
+            $scope.draw_pie_chart(csq);
+        } else if (csq.{!ns}__Survey_Type__c == 'number'){
+            $scope.draw_pie_chart(csq);
+        }
+    }
+
+    $scope.reload_report = function(session_id){
+        remoting.init();
+        $scope.d_get_session(session_id)
+        .then(
+            function(record){
+                $scope.session.record = record;
+                remoting.progress = 100;
+                remoting.success();
+            },
+            function(event){
+                remoting.error(event);
+            }
+        );
+    }
+
+    /*
+    $scope.init_enquire = function(){
+        enquire.register("screen and (max-width:767px)", {
+            match : function(){
+                angular.forEach($scope.csqs, function(csq, key){
+                    $scope.draw_report(csq);
+                    $scope.$apply();
+                });
+            }
+        });
+        enquire.register("screen and (min-width:768px) and (max-width:991px)", {
+            match : function(){
+                angular.forEach($scope.csqs, function(csq, key){
+                    $scope.draw_report(csq);
+                    $scope.$apply();
+                });
+            }
+        });
+        enquire.register("screen and (min-width:992px)", {
+            match : function(){
+                angular.forEach($scope.csqs, function(csq, key){
+                    $scope.draw_report(csq);
+                    $scope.$apply();
+                });
+            }
+        });
+    }
+    */
+
+    $scope.init = function(){
+        $scope.$watch('csqs', function(new_value, old_value){
+            if (new_value == null){
+                return;
+            }
+            if (new_value !== old_value){
+                angular.forEach(new_value, function(csq, key){
+                    if (csq.{!ns}__Survey_Type__c != 'guest'){
+                        $timeout(function(){
+                            $scope.draw_report(csq);
+                        });
+                    }
+                });
+            }
+        });
+    }
+
+    $scope.init();
+})
+.controller('guestListCtl', function($scope, $modalInstance, $q, $modal, session_id, search_by, search_value, csqs, guest, remoting){
+    $scope.d_get_guests_by_condition = function(session_id, search_by, search_value){
+        var d = $q.defer();
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.sessionCtl.get_guests_by_condition}',
+            session_id,
+            search_by,
+            search_value,
+            function(result,event){
+                if (event.status){
+                    d.resolve(result);
+                } else {
+                    d.reject(event);
+                }
+            },{escape:true}
+        );
+        return d.promise;
+    }
+
+    $scope.d_get_answers_by_guest = function(guest_id){
+        var d = $q.defer();
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.sessionCtl.get_answers_by_guest}',
+            guest_id,
+            function(result,event){
+                if (event.status){
+                    d.resolve(result);
+                } else {
+                    d.reject(event);
+                }
+            },{escape:true}
+        );
+        return d.promise;
+    }
+
+    $scope.get_answers_by_guest = function(guest_id){
+        $scope.guest_report.csas = [];
+        $scope.guest_report.csqs = [];
+
+        remoting.init(false);
+        $scope.d_get_answers_by_guest(guest_id)
+        .then(
+            function(csas){
+                $scope.guest_report.csas = csas;
+                $scope.guest_report.csqs = $scope.csqs;
+                remoting.progress = 100;
+                remoting.success();
+            },
+            function(event){
+                remoting.error(event);
+            }
+        );
+    }
+
+    $scope.guest_report = {};
+    $scope.csqs = csqs;
+    $scope.guest = guest;
+    
+    remoting.init(false);
+    $scope.d_get_guests_by_condition(session_id, search_by, search_value)
+    .then(
+        function(guests){
+            $scope.guest_report.records = guests;
+            remoting.progress = 100;
+            remoting.success();
+        },
+        function(event){
+            remoting.error(event);
+        }
+    );
+});
+
+angular.module('sugoiReport', ['ui.bootstrap', 'ngSanitize'])
+.directive('sugoiReport', function($compile, $sanitize){
+
+    var get_template = function(csq){
+        // We won't output anything in case of survey type : guest.
+        if (csq.{!ns}__Survey_Type__c == 'guest'){
+            return;
+        }
+
+        var template = 
+            "<div class='panel panel-default'>\n" +
+                "<div class='panel-heading'>\n" +
+                    $sanitize(csq.{!ns}__Question__c) + 
+                    " &nbsp;<span ng-show='csq.{!ns}__Required__c' class='badge'>{!$label.required}</span>\n" +
+                "</div>\n";
+        if (csq.{!ns}__Survey_Type__c == 'checkbox' || csq.{!ns}__Survey_Type__c == 'radio'){
+            template +=
+                "<div class='panel-body'>\n" +
+                    "<div class='bar_chart_container' id='bar_chart_" + csq.Id + "'></div>\n" + 
+                "</div>\n";
+
+            if (csq.{!ns}__Enable_Free_Form__c){
+                template += 
+                "<div class='panel-footer'>\n" +
+                    "<h4>{!$label.other_answers}</h4>" + 
+                    "<div class='list-group'>\n";
+
+                angular.forEach(csq.csas, function(csa, key){
+                    template +=
+                        "<a class='list-group-item' ng-click='open_guestList(\"" + csq.{!ns}__Session__c + "\", \"guest_id\",\"" + csa.{!ns}__Guest__c + "\")'>\n" +
+                            $sanitize(csa.{!ns}__Free_Form__c) +
+                        "</a>\n";
+                });
+
+                template += 
+                    "</div>\n" + 
+                "</div>\n";
+            }
+        } else if (csq.{!ns}__Survey_Type__c == 'free'){
+            template += 
+                "<div class='list-group list-group'>\n";
+            angular.forEach(csq.csas, function(csa, key){
+                template += 
+                    "<a class='list-group-item' ng-click='open_guestList(\"" + csq.{!ns}__Session__c + "\", \"guest_id\",\"" + csa.{!ns}__Guest__c + "\")'>\n" +
+                        $sanitize(csa.{!ns}__Free_Form__c) + 
+                    "</a>\n";
+            });
+            template += 
+                "</div>\n";
+        } else if (csq.{!ns}__Survey_Type__c == 'rating'){
+            template +=
+                "<div class='panel-body'>\n" +
+                    "<div class='pie_chart_container' id='pie_chart_" + csq.Id + "'></div>\n" + 
+                "</div>\n";
+        } else if (csq.{!ns}__Survey_Type__c == 'number'){
+            template +=
+                "<div class='panel-body'>\n" +
+                    "<div class='pie_chart_container' id='pie_chart_" + csq.Id + "'></div>\n" + 
+                "</div>\n";
+        }
+
+        template += 
+            "</div>\n";
+        return template;
+    }
+
+    var linker = function(scope, element, attr){
+        element.html(get_template(scope.csq)).show();
+        $compile(element.contents())(scope);
+    }
+
+    return {
+        replace: true,
+        restrict: 'E',
+        link: linker,
+        scope: {
+            csq: '=',
+            csqs: '=',
+            guest: '='
+        },
+        controller: function($scope, $q, $modal){
+            $scope.open_guestList = function(session_id, search_by, search_value){
+                var modalInstance = $modal.open({
+                    templateUrl: "T_guestList",
+                    controller: "guestListCtl",
+                    resolve: {
+                        session_id: function(){
+                            return session_id;
+                        },
+                        search_by: function(){
+                            return search_by;
+                        },
+                        search_value: function(){
+                            return search_value;
+                        },
+                        csqs: function(){
+                            return $scope.csqs;
+                        },
+                        guest: function(){
+                            return $scope.guest;
+                        }
+                    }
+                });
+            }
+        }
+    }
+});
+
+angular.module('sugoiReportByGuest', ['ui.bootstrap', 'ngSanitize'])
+.directive('sugoiReportByGuest', function($compile, $sanitize){
+
+    var get_template = function(csq, csas){
+        // We won't output anything in case of survey type : guest.
+        if (csq.{!ns}__Survey_Type__c == 'guest'){
+            return;
+        }
+
+        var template = 
+            "<div class='panel panel-default'>\n" +
+                "<div class='panel-heading'>\n" +
+                    $sanitize(csq.{!ns}__Question__c) + 
+                    " &nbsp;<span ng-show='csq.{!ns}__Required__c' class='badge'>{!$label.required}</span>\n" +
+                "</div>\n" + 
+                "<div class='panel-body'>\n";
+
+        if (csq.{!ns}__Survey_Type__c == 'checkbox' || csq.{!ns}__Survey_Type__c == 'radio'){
+            angular.forEach(csas, function(csa, key){
+                if (csa.{!ns}__Custom_Survey_Option__r.{!ns}__Custom_Survey_Question__c == csq.Id){
+                    template +=
+                        "<div style='margin-bottom:10px;'><span class='glyphicon glyphicon-check'></span>&nbsp;" + $sanitize(csa.{!ns}__Custom_Survey_Option__r.{!ns}__Option__c) + "</div>\n";
+                }
+            })
+
+            if (csq.{!ns}__Enable_Free_Form__c){
+                angular.forEach(csas, function(csa, key){
+                    if (csa.{!ns}__Custom_Survey_Option__r.{!ns}__Custom_Survey_Question__c == csq.Id && csa.{!ns}__Custom_Survey_Option__r.{!ns}__Enable_Free_Form__c == true){
+                        template += 
+                            "<div class='list-group'>\n" +
+                                "<div class='list-group-item'>\n" +
+                                    $sanitize(csa.{!ns}__Free_Form__c) + 
+                                "</div>\n" +
+                            "</div>\n";
+                    }
+                });
+            }
+        } else if (csq.{!ns}__Survey_Type__c == 'free'){
+            angular.forEach(csas, function(csa, key){
+                if (csa.{!ns}__Custom_Survey_Option__r.{!ns}__Custom_Survey_Question__c == csq.Id){
+                    template += $sanitize(csa.{!ns}__Free_Form__c);
+                }
+            });
+        } else if (csq.{!ns}__Survey_Type__c == 'rating'){
+            angular.forEach(csas, function(csa, key){
+                if (csa.{!ns}__Custom_Survey_Option__r.{!ns}__Custom_Survey_Question__c == csq.Id){
+                    template += csa.{!ns}__Custom_Survey_Option__r.{!ns}__Option_Of_Number__c;
+                }
+            });
+        } else if (csq.{!ns}__Survey_Type__c == 'number'){
+            angular.forEach(csas, function(csa, key){
+                if (csa.{!ns}__Custom_Survey_Option__r.{!ns}__Custom_Survey_Question__c == csq.Id){
+                    template += csa.{!ns}__Free_Form_Of_Number__c;
+                }
+            });
+        }
+
+        template += "</div></div>\n";
+        return template;
+    }
+
+    var linker = function(scope, element, attr){
+        element.html(get_template(scope.csq, scope.csas)).show();
+        $compile(element.contents())(scope);
+    }
+
+    return {
+        replace: true,
+        restrict: 'E',
+        link: linker,
+        scope: {
+            csq: '=',
+            csas: '='
+        },
+    }
+});
+
+</script>
+
+<!-- Reload Button -->
+<div style="margin: 20px 0; text-align: right;">
+    <button type="button" class="btn btn-sm btn-success" ng-click="reload_report(session.record.Id)">
+        <span class="glyphicon glyphicon-refresh"></span>&nbsp; {!$label.reload}
+    </button>
+</div>
+
+<sugoi-report ng-repeat="csq in csqs" csq="csq" csqs="csqs" guest="guest" />
+
+<!-- Modal for guestList -->
+<script type="text/ng-template" id="T_guestList">
+    <div class="modal-body">
+        <!-- guest list -->
+        <div ng-show="guest_report.record == null">
+            <div style="margin-bottom: 10px;">
+                &nbsp;<button type="button" class="close" ng-click="$dismiss()">&times;</button>
+            </div>
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>{!$ObjectType.sugoisurvey5__Guest__c.Fields.sugoisurvey5__Company__c.Label}</th>
+                        <th>{!$ObjectType.sugoisurvey5__Guest__c.Fields.sugoisurvey5__Name__c.Label}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr ng-repeat="record in guest_report.records" ng-click="guest_report.record = record; get_answers_by_guest(record.Id)">
+                        <td>{{record.{!ns}__Company__c}}</td>
+                        <td>{{record.{!ns}__Name__c}}</td>
+                    </tr>
+                </tbody>
+            </table>
+            <progressbar ng-show="remoting.progress < 100" class="progress-striped active" max="100" value="100" type="primary" animate="false"></progressbar>
+        </div>
+
+        <!-- guest detail -->
+        <div ng-show="guest_report.record != null">
+            <div style="margin-bottom: 20px;">
+                &nbsp;<button type="button" class="close" ng-click="guest_report.record = null">&times;</button>
+            </div>
+
+            <form class="form-horizontal" role="form">
+                <force-input ng-repeat="field in guest.field_sets.basic_config" field="field" record="guest_report.record"></force-input>
+            </form>
+
+            <progressbar ng-show="remoting.progress < 100" class="progress-striped active" max="100" value="100" type="primary" animate="false"></progressbar>
+            <sugoi-report-by-guest ng-repeat="csq in guest_report.csqs" csq="csq" csas="guest_report.csas" />
+        </div>
+    </div>
+</script><!-- Modal for guestList -->
+
+</apex:page>

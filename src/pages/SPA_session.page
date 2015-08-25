@@ -1,0 +1,866 @@
+<apex:page controller="sessionCtl" showHeader="false" standardStyleSheets="false" applyBodyTag="false" applyHtmlTag="false" docType="html-5.0" cache="true">
+
+<apex:variable var="apexController" value="sessionCtl" />
+<apex:variable var="ns" value="sugoisurvey5" />
+
+<html ng-app="sugoisurvey">
+<head>
+    <apex:outputText rendered="{! $Setup.sugoisurvey5__config__c.sugoisurvey5__initialized__c == false}">
+        <meta http-equiv="Refresh" content="0;URL=/apex/{!ns}__MAN_Getting_Started"></meta>
+    </apex:outputText>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"></meta>
+    <meta user-scalable="no"></meta>
+    <link rel="stylesheet" type="text/css" href="{!URLFOR($Resource.bootstrap_3_1_1_dist_zip, 'bootstrap-3.1.1-dist/css/bootstrap.min.css')}" />
+    <title>{!$label.sugoisurvey}</title>
+</head>
+
+<body ng-controller="root_ctl">
+
+<style>
+.tab-pane {
+    padding-top: 20px;
+    padding-bottom: 20px;
+}
+
+@media screen and (min-width: 320px) {
+    h1 {
+        color: #666666;
+        font-size: 14pt;
+        border-bottom: solid 1px #999999;
+        padding-bottom: 10px;
+    }
+    #session_detail .tab_label {
+        font-size: 0.8em;
+        padding: 7px;
+    }
+}
+@media screen and (min-width: 768px) {
+    h1 {
+        color: #666666;
+        font-size: 16pt;
+        border-bottom: solid 1px #999999;
+        padding-bottom: 10px;
+    }
+    #session_detail .tab_label {
+        font-size: 1.0em;
+        padding: 12px;
+    }
+}
+h2 {
+    color: #666666;
+    font-size: 14pt;
+    border-bottom: solid 1px #999999;
+    padding-bottom: 10px;
+    margin-bottom: 20px;
+}
+h3 {
+    color: #333333;
+    font-size: 12pt;
+}
+h4, h5 {
+    color: #333333;
+    font-size: 10pt;
+}
+#navbar a:hover{
+    text-decoration: none;
+}
+</style>
+
+<!-- Streaming API Demo -->
+<!--
+<script type="text/javascript" src="{!URLFOR($Resource.cometd_220_zip, 'cometd-2.2.0/cometd.js')}"></script>
+<script type="text/javascript" src="{!URLFOR($Resource.cometd_220_zip, 'cometd-2.2.0/jquery-1.5.1.js')}"></script>
+<script type="text/javascript" src="{!URLFOR($Resource.cometd_220_zip, 'cometd-2.2.0/jquery.cometd.js')}"></script>
+-->
+<!-- Streaming API Demo -->
+
+<script type="text/javascript" src="{!$Resource.jquery_2_1_0_min_js}"></script>
+<script type="text/javascript" src="{!URLFOR($Resource.jqueryui_1_9_2_custom_zip, 'jquery-ui-1.9.2.custom/js/jquery-ui-1.9.2.custom.min.js')}"></script>
+<script type="text/javascript" src="{!URLFOR($Resource.bootstrap_3_1_1_dist_zip, 'bootstrap-3.1.1-dist/js/bootstrap.min.js')}"></script>
+<script type="text/javascript" src="{!$Resource.angular_min_js}"></script>
+<script type="text/javascript" src="{!$Resource.angular_sanitize_min_js}"></script>
+<script type="text/javascript" src="{!$Resource.angular_touch_min_js}"></script>
+<script type="text/javascript" src="{!$Resource.ui_bootstrap_tpls_0_10_0_min_js}"></script>
+<script type="text/javascript" src="{!$Resource.forcetk4ng_js}"></script>
+<script type="text/javascript" src="{!$Resource.forceInput_js}"></script>
+<script type="text/javascript" src="{!$Resource.modalRemoting_js}"></script>
+<script type="text/javascript" src="{!$Resource.sortable_js}"></script>
+<script type="text/javascript" src="{!$Resource.enquire_min_js}"></script>
+<script type="text/javascript" src="https://www.google.com/jsapi"></script>
+
+<!--[if lte IE 8]>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/json2/20121008/json2.js"></script>
+<![endif]-->
+
+<script type="text/javascript">
+angular.module('sugoisurvey', ['ui.bootstrap', 'ui.sortable', 'ngTouch', 'sugoiReport', 'sugoiReportByGuest', 'forcetk4ng', 'forceInput', 'modalRemoting'])
+.run(["force", function(force){
+    force.setAccessToken('{!$Api.Session_ID}');
+}])
+.filter('urlEncode', function(){
+    return function(input){
+        if (input != null){
+            return encodeURIComponent(input);
+        }
+    };
+})
+.controller('root_ctl', function($scope, $q, $timeout, remoting){
+
+    $scope.init_enquire = function(){
+        $scope.rwd = {};
+        enquire.register("screen and (max-width:767px)", {
+            match : function(){
+                $scope.rwd.size = 0;
+                $scope.$apply();
+            }
+        });
+        enquire.register("screen and (min-width:768px) and (max-width:991px)", {
+            match : function(){
+                $scope.rwd.size = 1;
+                $scope.$apply();
+            }
+        });
+        enquire.register("screen and (min-width:992px)", {
+            match : function(){
+                $scope.rwd.size = 2;
+                $scope.$apply();
+            }
+        });
+    }
+
+    $scope.d_get_config = function(){
+        var d = $q.defer();
+        {!ns}.{!apexController}.get_config(
+            function(result, event){
+                if (event.status){
+                    d.resolve(result);
+                } else {
+                    d.reject(event);
+                }
+            }
+        );
+        return d.promise;
+    }
+
+    $scope.meta = {};
+    $scope.data = {};
+
+    //// Get Custom Setting
+    $scope.d_get_config()
+    .then(
+        function(config){
+            $scope.config = config;
+        },
+        function(event){
+            remoting.error(event.message);
+        }
+    );
+
+    $timeout(function(){
+        $scope.init_enquire();
+    });   
+})
+.controller('session_ctl', function($scope, $filter, $q, $timeout, $log, force, remoting){
+
+    $scope.d_get_config = function(){
+        var d = $q.defer();
+        {!ns}.{!apexController}.get_config(
+            function(result, event){
+                if (event.status){
+                    d.resolve(result);
+                } else {
+                    d.reject(event);
+                }
+            }
+        );
+        return d.promise;
+    }
+
+    $scope.create_session = function(){
+        remoting.form("{!$label.new} " + $scope.session.label, $scope.session.field_sets.new_record_form, function(record){
+            remoting.init();
+
+            if (record.Name == null || record.Name == ''){
+                remoting.error("{!$label.pls_enter_session_name}");
+                return;
+            }
+
+            $scope.d_create_session(record)
+            .then(
+                function(result){
+                    remoting.progress = 50;
+                    $scope.session.record = record;
+                    $scope.session.record.Id = result.Id;
+                    return $scope.d_get_sessions();
+                },
+                function(event){
+                    return $q.reject(event);
+                }
+            )
+            .then(
+                function(records){
+                    $scope.session.records = records;
+                    remoting.progress = 100;
+                    remoting.success('{!$label.survey_has_been_created}');
+                },
+                function(event){
+                    remoting.error(event);
+                }
+            );
+        });
+    }
+
+    $scope.update_session = function(record){
+        remoting.init();
+        $scope.d_update_session(record)
+        .then(
+            function(result){
+                remoting.progress = 33;
+                return $scope.d_get_sessions();
+            },
+            function(event){
+                return $q.reject(event);
+            }
+        )
+        .then(
+            function(records){
+                remoting.progress = 66;
+                $scope.session.records = records;
+                return $scope.d_get_session(record.Id);
+            },
+            function(event){
+                return $q.reject(event);
+            }
+        )
+        .then(
+            function(record){
+                $scope.session.record = record;
+                remoting.progress = 100;
+                remoting.success('{!$label.survey_has_been_updated}');
+            },
+            function(event){
+                remoting.error(event);
+            }
+        );
+    }
+
+    $scope.clone_session = function(record_id){
+        remoting.confirm('{!$label.cloning_survey}', function(){
+            remoting.init();
+            $scope.d_clone_session(record_id)
+            .then(
+                function(record_id){
+                    remoting.progress = 33;
+                    return $scope.d_get_session(record_id);
+                },
+                function(event){
+                    return $q.reject(event);
+                }
+            )
+            .then(
+                function(record){
+                    remoting.progress = 66;
+                    $scope.session.record = record;
+                    return $scope.d_get_sessions();
+                },
+                function(event){
+                    return $q.reject(event);
+                }
+            )
+            .then(
+                function(records){
+                    $scope.session.records = records;
+                    remoting.progress = 100;
+                    remoting.success('{!$label.survey_has_been_cloned}');
+                },
+                function(event){
+                    remoting.error(event);
+                }
+            );
+        });
+    }
+
+    $scope.delete_session = function(record_id){
+        remoting.confirm('{!$label.deleting_survey}', function(){
+            remoting.init();
+            force.delete($scope.session.name, record_id)
+            .then(
+                function(result){
+                    remoting.progress = 50;
+                    return $scope.d_get_sessions();
+                },
+                function(event){
+                    return $q.reject(event);
+                }
+            )
+            .then(
+                function(records){
+                    $scope.session.records = records;
+                    $scope.unset_session();
+                    remoting.progress = 100;
+                    remoting.success('{!$label.survey_has_been_deleted}');
+                },
+                function(event){
+                    remoting.error(event);
+                }
+            );
+        });
+    }
+
+    $scope.delete_brand_logo = function(attachment_id){
+        remoting.confirm('{!$label.deleting_brand_logo}', function(){
+            remoting.init();
+            force.delete("Attachment", attachment_id)
+            .then(
+                function(result){
+                    remoting.progress = 50;
+                    $scope.session.record.{!ns}__Brand_Logo_Id__c = null;
+                    return $scope.d_update_session($scope.session.record);
+                }
+            )
+            .then(
+                function(result){
+                    remoting.progress = 100;
+                    remoting.success('{!$label.brand_logo_has_been_deleted}');
+                },
+                function(event){
+                    remoting.error(event);
+                }
+            );
+        });
+    }
+
+    $scope.d_create_session = function(orig_record){
+        var d = $q.defer();
+
+        var record = angular.copy(orig_record);
+
+        // Delete unnecessary fields
+        for (var f in record){
+            if (f.substring(f.length - 3, f.length) == '__r'){
+                delete record[f];
+            }
+            if (f == 'attributes'){
+                delete record[f];
+            }
+        }
+
+        if (typeof record.{!ns}__Date__c == 'undefined' || record.{!ns}__Date__c == ''){
+            delete record.{!ns}__Date__c;
+        } else if (record.{!ns}__Date__c != null){
+            record.{!ns}__Date__c = record.{!ns}__Date__c.replace(/-/g, "/");
+            record.{!ns}__Date__c = record.{!ns}__Date__c.replace(/\./g, "/");
+            record.{!ns}__Date__c = Date.parse(record.{!ns}__Date__c) + 32400000;
+        }
+
+        {!ns}.{!apexController}.create_session(
+            record,
+            function(result, event){
+                if (event.status){
+                    d.resolve(result);
+                } else {
+                    d.reject(event);
+                }
+            },{escape: true}
+        );
+        return d.promise;
+    }
+
+    $scope.d_update_session = function(orig_record){
+        var d = $q.defer();
+
+        var record = angular.copy(orig_record);
+
+        // Delete unnecessary fields
+        for (var f in record){
+            if (f.substring(f.length - 3, f.length) == '__r'){
+                delete record[f];
+            }
+            if (f == 'attributes'){
+                delete record[f];
+            }
+        }
+
+        if (typeof record.{!ns}__Date__c == 'undefined' || record.{!ns}__Date__c == ''){
+            delete record.{!ns}__Date__c;
+        } else if (record.{!ns}__Date__c != null){
+            if (typeof record.{!ns}__Date__c == 'string'){
+                record.{!ns}__Date__c = record.{!ns}__Date__c.replace(/-/g, "/");
+                record.{!ns}__Date__c = record.{!ns}__Date__c.replace(/\./g, "/");
+                record.{!ns}__Date__c = Date.parse(record.{!ns}__Date__c) + 32400000;
+            }
+        }
+
+        angular.forEach($scope.session.guest_registration_fields, function(field, key){
+            delete field.$$hashKey;
+        });
+        record.{!ns}__Guest_Registration_Fields__c = JSON.stringify($scope.session.guest_registration_fields);
+
+        {!ns}.{!apexController}.update_session(
+            record,
+            function(result, event){
+                if (event.status){
+                    d.resolve();
+                } else {
+                    d.reject(event);
+                }
+            },{escape: true}
+        );
+        return d.promise;
+    }
+
+    $scope.d_get_sessions = function(){
+        var soql = 'select Id, Name, {!ns}__Date__c, {!ns}__Open__c from {!ns}__Session__c order by {!ns}__Open__c desc, {!ns}__Date__c desc, CreatedDate desc';
+        return force.query(soql);
+    }
+
+    $scope.d_get_session = function(record_id){
+        var d = $q.defer();
+        {!ns}.{!apexController}.get_session(
+            record_id,
+            function(result, event){
+                if (event.status){
+                    if (result.{!ns}__Date__c != null){
+                        result.{!ns}__Date__c = $filter('date')(result.{!ns}__Date__c, 'yyyy-MM-dd');
+                    }
+                    result.{!ns}__Mail_Guest_Pass_Body_L__c = '{!$label.auto_generated}';
+                    result.{!ns}__Mail_Survey_Link_Body_L__c = '{!$label.auto_generated}';
+                    d.resolve(result);
+                } else {
+                    d.reject(event);
+                }
+            },{escape:false} // need to be false since escaping breaks the json data in Guest_Registration_Fields__c.
+
+        );
+        return d.promise;
+    }
+
+    $scope.d_clone_session = function(record_id){
+        var d = $q.defer();
+        {!ns}.{!apexController}.clone_session(
+            record_id,
+            function(result, event){
+                if (event.status){
+                    d.resolve(result);
+                } else {
+                    d.reject(event);
+                }
+            },{escape:true}
+        );
+        return d.promise;
+    };
+
+    $scope.d_get_free_answers = function(csq_id){
+        var d = $q.defer();
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.sessionCtl.get_free_answers}',
+            csq_id,
+            function(result, event){
+                if (event.status){
+                    d.resolve(result);
+                } else {
+                    d.reject(event);
+                }
+            },{escape:true}
+        );
+        return d.promise;
+    }
+
+    $scope.set_session = function(record_id){
+        $scope.session.record.Id = record_id;
+    }
+
+    $scope.unset_session = function(){
+        $scope.session.record = {
+            Id : null
+        };
+    }
+
+    $scope.generate_csqs = function(orig_csqs){
+        csqs = angular.copy(orig_csqs);
+        angular.forEach(csqs, function(csqv, csqk){
+            if (csqv.{!ns}__Survey_Type__c == 'guest'){
+                csqv.guest_form = {};
+                angular.forEach($scope.guest.field_sets.new_record_form, function(field, field_key){
+                    csqv.guest_form[field.name] = {};
+                });
+                angular.forEach($scope.session.record.{!ns}__Custom_Survey_Option__r, function(csov, csok){
+                    if (csov.{!ns}__Custom_Survey_Question__c == csqv.Id){
+                        csqv.guest_form[csov.{!ns}__Option__c].active = true;
+                        if (csov.{!ns}__Required__c){
+                            csqv.guest_form[csov.{!ns}__Option__c].required = true;
+                        }
+                    }
+                });
+            } else {
+                csqv.{!ns}__Custom_Survey_Option__r = [];
+                angular.forEach($scope.session.record.{!ns}__Custom_Survey_Option__r, function(csov, csok){
+                    if (csov.{!ns}__Custom_Survey_Question__c == csqv.Id){
+                        csqv.{!ns}__Custom_Survey_Option__r.push(csov);
+                    }
+                });
+            }
+        });
+        return csqs;
+    };
+
+    $scope.init_guest_registration_fields = function(){
+        return [
+            {
+                name : "sugoisurvey5__Last_Name__c",
+                label : "{!$ObjectType.Guest__c.Fields.Last_Name__c.Label}",
+                inputType : "text",
+                active : false,
+                required : false
+            },
+            {
+                name : "sugoisurvey5__First_Name__c",
+                label : "{!$ObjectType.Guest__c.Fields.First_Name__c.Label}",
+                inputType : "text",
+                active : false,
+                required : false
+            },
+            {
+                name : "sugoisurvey5__Email__c",
+                label : "{!$ObjectType.Guest__c.Fields.Email__c.Label}",
+                inputType : "email",
+                active : true,
+                required : true
+            },
+            {
+                name : "sugoisurvey5__Phone__c",
+                label : "{!$ObjectType.Guest__c.Fields.Phone__c.Label}",
+                inputType : "tel",
+                active : false,
+                required : false
+            },
+            {
+                name : "sugoisurvey5__Company__c",
+                label : "{!$ObjectType.Guest__c.Fields.Company__c.Label}",
+                inputType : "text",
+                active : false,
+                required : false
+            },
+            {
+                name : "sugoisurvey5__Division__c",
+                label : "{!$ObjectType.Guest__c.Fields.Division__c.Label}",
+                inputType : "text",
+                active : false,
+                required : false
+            },
+            {
+                name : "sugoisurvey5__Title__c",
+                label : "{!$ObjectType.Guest__c.Fields.Title__c.Label}",
+                inputType : "text",
+                active : false,
+                required : false
+            }
+        ];
+    }
+    
+    $scope.init = function(){
+
+        //Define field_sets for session 
+        var field_sets_for_session = {
+            basic_config : ['{!ns}__Open__c', 'Name', '{!ns}__Date__c', '{!ns}__Who_Can_Submit_Survey__c', '{!ns}__Guest_Sum__c', '{!ns}__Submitted_Survey_Sum__c', 'Id'],
+            guest_registration_config : ['{!ns}__Open_Registration__c'],
+            chatter_config : ['{!ns}__Post_To_Account_Record_Feed__c', '{!ns}__Post_To_Contact_Record_Feed__c'],
+            new_record_form : ['Name']
+        }
+
+        $scope.session = {};
+        force.describe('{!ns}__Session__c')
+        .then(
+            function(desc){
+                $scope.session = desc;
+                $scope.session.field_sets = {};
+                $scope.session.records = [];
+                $scope.session.record = {Id: null};
+
+                angular.forEach(field_sets_for_session, function(field_set, field_set_name){
+                    $scope.session.field_sets[field_set_name] = [];
+                    angular.forEach(field_sets_for_session[field_set_name], function(field_in_field_set, kkey){
+                        angular.forEach($scope.session.fields, function(field, kkkey){
+                            if (field_in_field_set == field.name){
+                                $scope.session.field_sets[field_set_name].push(field);
+                            }
+                        });
+                    });
+                })
+
+                // Get Session list
+                return $scope.d_get_sessions();
+            },
+            function(event){
+                return $q.reject(event);
+            }
+        )
+        .then(
+            function(records){
+                $scope.session.records = records;
+            },
+            function(event){
+                remoting.error(event);
+            }
+        );
+
+        // Define field_sets for Guest__c
+        var field_sets_for_guest = {
+            new_record_form : ['{!ns}__Last_Name__c', '{!ns}__First_Name__c', '{!ns}__Email__c', '{!ns}__Phone__c', '{!ns}__Company__c', '{!ns}__Division__c', '{!ns}__Title__c'],
+            basic_config : ['{!ns}__Last_Name__c', '{!ns}__First_Name__c', '{!ns}__Email__c', '{!ns}__Phone__c', '{!ns}__Company__c', '{!ns}__Division__c', '{!ns}__Title__c']
+        };
+
+        $scope.guest = {};
+        force.describe('{!ns}__Guest__c')
+        .then(
+            function(desc){
+                $scope.guest = desc;
+                $scope.guest.field_sets = {};
+                $scope.guest.records = [];
+                $scope.guest.record = {Id: null};
+
+                angular.forEach(field_sets_for_guest, function(field_set, field_set_name){
+                    $scope.guest.field_sets[field_set_name] = [];
+                    angular.forEach(field_sets_for_guest[field_set_name], function(field_in_field_set, kkey){
+                        angular.forEach($scope.guest.fields, function(field, kkkey){
+                            if (field_in_field_set == field.name){
+                                $scope.guest.field_sets[field_set_name].push(field);
+                            }
+                        });
+                    });
+                })
+            },
+            function(error){
+                remoting.error(error[0].message);
+            }
+        );
+
+        // When a session is specified or changed, get record detail.
+        $scope.$watch('session.record.Id', function(new_value, old_value){
+            if (new_value == null){
+                return;
+            }
+
+            if (new_value != old_value){
+                $scope.d_get_session(new_value)
+                .then(
+                    function(record){
+                        record.{!ns}__Title_For_Registration__c = record.{!ns}__Title_For_Registration__c || record.Name + ' {!$label.Registration_Form}';
+                        $scope.session.record = record;
+                        if ($scope.session.record.{!ns}__Guest_Registration_Fields__c == null){
+                            $scope.session.guest_registration_fields = $scope.init_guest_registration_fields();
+                        }
+                    },
+                    function(event){
+                        remoting.error(event.message);
+                    }
+                );
+            }
+        });
+
+        // When the csqs is updated, generate csqs.
+        $scope.$watch('session.record.{!ns}__Custom_Survey_Question__r', function(new_value, old_value){
+            if (new_value == null){
+                $scope.csqs = [];
+                return;
+            }
+            var csqs = $scope.generate_csqs($scope.session.record.{!ns}__Custom_Survey_Question__r);
+
+            // Get free answers of each csqs
+            var promises_d_get_free_answers = [];
+            angular.forEach(csqs, function(csq, key){
+                if (csq.{!ns}__Survey_Type__c != 'guest'){
+                    promises_d_get_free_answers.push($scope.d_get_free_answers(csq.Id)
+                    .then(
+                        function(csas){
+                            csq.csas = csas;
+                        },
+                        function(event){
+                            remoting.error(event.message);
+                        }
+                    ));
+                }
+            });
+
+            // When all the free answers are retrieved, set them to scope variable. Edit Survey, Session Reports, Guest Detail will refer to this scope variable.
+            $q.all(promises_d_get_free_answers)
+            .then(
+                function(){
+                    $scope.csqs = csqs;
+                },
+                function(event){
+                    remoting.error(event);
+                }
+            );
+        });
+
+        // When Guest_Registration_Fields is updated, deserialize it.
+        $scope.$watch('session.record.{!ns}__Guest_Registration_Fields__c', function(new_value, old_value){
+            if (new_value == null){
+                $scope.session.guest_registration_fields = $scope.init_guest_registration_fields();
+            } else {
+                $scope.session.guest_registration_fields = JSON.parse(new_value);
+            }
+        })
+    }
+
+    $scope.init();
+})
+.directive("forceContent", function(){
+
+    var linker = function(scope, element, attributes){
+        element.bind("change", function (changeEvent) {
+            var reader = new FileReader();
+            reader.onload = function (loadEvent) {
+                scope.$apply(function(){
+                    scope.upload_forceContent(scope.forceContent.title, loadEvent.target.result.split(',')[1], scope.session.record.Id);
+                });
+            }
+            scope.forceContent = {};
+            if (typeof changeEvent.target.files[0] != 'undefined'){
+                scope.forceContent.title = changeEvent.target.files[0].name;
+                reader.readAsDataURL(changeEvent.target.files[0]);
+            }
+        });    
+    }
+
+    return {
+        link: linker,
+        controller: function($scope, $q, force, remoting){
+            $scope.upload_forceContent = function(title, body, parentId){
+                record = {
+                    Body : body,
+                    Name : title,
+                    ParentId : parentId
+                }
+
+                if ($scope.session.record.{!ns}__Brand_Logo_Id__c != null){
+                    var old_brand_logo_id = $scope.session.record.{!ns}__Brand_Logo_Id__c;
+                }
+
+                remoting.init();
+                force.create('Attachment', record)
+                .then(
+                    function(forceContent){
+                        remoting.progress = 33;
+                        $scope.session.record.{!ns}__Brand_Logo_Id__c = forceContent.id;
+                        return $scope.d_update_session($scope.session.record);
+                    },
+                    function(event){
+                        return $q.reject(event);
+                    }
+                )
+                .then(
+                    function(result){
+                        remoting.progress = 66;
+                        if (old_brand_logo_id != null){
+                            return force.delete('Attachment', old_brand_logo_id);
+                        }
+                    },
+                    function(event){
+                        return $q.reject(event);
+                    }
+                )
+                .then(
+                    function(result){
+                        remoting.progress = 100;
+                        remoting.success('{!$label.logo_has_been_updated}');
+                    },
+                    function(event){
+                        remoting.error(event);
+                    }
+                )
+            }
+        }
+    }
+});
+</script>
+
+<div ng-controller="session_ctl" ng-cloak="true">
+
+    <div class="container" style="margin-top:20px;" ng-if="config.{!ns}__initialized__c == true">
+
+        <div id="navbar" ng-show="rwd.size > 1" style="text-align: right;">
+            <a href="/home/home.jsp"><span class="glyphicon glyphicon-home"></span>&nbsp; {!$label.go_home}</a>
+        </div>
+
+        <!-- SM Only. Button to back to List of Records -->
+        <div ng-show="rwd.size < 1 && session.record.Id != null" style="margin-bottom:20px;">
+            <button type="button" class="btn btn-default btn-block" ng-click="unset_session()">
+                <span class="glyphicon glyphicon-align-justify"></span>&nbsp; {!$label.survey_list}
+            </button>
+        </div><!-- SM Only. Button to back to List of Records -->
+
+        <div class="row">
+            <div ng-hide="rwd.size < 1 && session.record.Id != null" class="col-sm-4" id="session_list">
+
+                <!-- Title -->
+                <h1>{!$label.survey_list}</h1>
+
+                <!-- New Button -->
+                <div style="margin: 20px 0;">
+                    <button type="button" class="btn btn-success btn-block" ng-click="create_session()"><span class="glyphicon glyphicon-plus-sign"></span>&nbsp; {!$label.new} {!$label.survey}</button>
+                </div>
+
+                <!-- List of Records of Specific Custom Object -->
+                <div class="panel panel-default" ng-show="session.records.length > 0">
+                    <div class="list-group">
+                        <a ng-repeat="record in session.records | filter:search_record" ng-click="set_session(record.Id)" href="#" class="list-group-item">
+                            <span ng-show="record.{!ns}__Open__c" class="badge">{!$label.opening}</span>
+                            <span style="font-weight: bold;" class="list-group-item-heading">{{record.Name}}</span>
+                            <p class="list-group-item-text">{{record.{!ns}__Date__c}}</p>
+                        </a>
+                    </div>
+                </div>
+
+            </div>
+            
+            <!-- Detail of the record -->
+            <div class="col-sm-8" ng-show="session.record.Id != null" id="session_detail" ng-cloak="true">
+                <!-- Title -->
+                <h1 style="margin-bottom: 20px;">
+                    <span>{{session.record.Name}}</span>
+                </h1>
+
+                <!-- Tab Bar -->
+                <ul class="nav nav-tabs">
+                    <li class="active"><a href="#tab_session_property" data-toggle="tab" class="tab_label">{!$label.property}</a></li>
+                    <li><a href="#tab_edit_survey" data-toggle="tab" class="tab_label">{!$label.edit_survey}</a></li>
+                    <li><a href="#tab_session_report" data-toggle="tab" class="tab_label">{!$label.report}</a></li>
+                    <li><a href="#tab_guest" data-toggle="tab" class="tab_label">{!$label.guest}</a></li>
+                </ul>
+
+                <!-- Tab Content -->
+                <div class="tab-content">
+
+                    <!-- Property Tab-->
+                    <div id="tab_session_property" class="tab-pane active" style="padding:0 5px;">
+                        <apex:include pageName="SPA_tab_session_property" />
+                    </div>
+
+                    <!-- Edit Survey Tab-->
+                    <div id="tab_edit_survey" class="tab-pane" style="padding:0 5px;" ng-controller="survey_ctl">
+                        <apex:include pageName="SPA_tab_edit_survey" />
+                    </div>
+
+                    <!-- Report Tab-->
+                    <div id="tab_session_report" class="tab-pane" style="padding:0 5px;" ng-controller="report_ctl">
+                        <apex:include pageName="SPA_tab_session_report" />
+                    </div>
+
+                    <!-- Guest Tab-->
+                    <div id="tab_guest" class="tab-pane" style="padding:0 5px;" ng-controller="guest_ctl">
+                        <apex:include pageName="SPA_tab_guest" />
+                    </div>
+
+                </div><!-- Tab Content -->      
+            </div><!-- Detail of the record -->
+        </div>
+    </div>
+
+</div>
+
+</body>
+</html>
+
+</apex:page>
